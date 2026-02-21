@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Mini MAR</title>
+<style>
+  :root{
+    --bg:#0b0b0f; --panel:#13131a; --panel2:#1b1b25;
+    --text:#f2f2f7; --muted:#a1a1aa; --grid:#2a2a35;
+    --accent:#0a84ff; --warn:#ff453a; --due:#ffd60a; --done:#34c759;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial; background:var(--bg); color:var(--text); height:100vh; overflow:hidden;}
+  .app{display:flex; height:100vh; width:100vw;}
+  .left{
+    width:28%;
+    min-width:170px;
+    background:var(--panel);
+    border-right:1px solid var(--grid);
+    display:flex; flex-direction:column;
+  }
+  .right{flex:1; display:flex; flex-direction:column; overflow:hidden;}
+  .bar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 12px; border-bottom:1px solid var(--grid); background:rgba(19,19,26,.95);
+  }
+  .title{font-weight:700}
+  .btn{
+    background:var(--accent); color:white; border:none; border-radius:10px;
+    padding:10px 12px; font-weight:600; cursor:pointer;
+  }
+  .btn.secondary{background:var(--panel2); border:1px solid var(--grid); color:var(--text);}
+  .btn.danger{background:var(--warn);}
+  .list{padding:10px; overflow:auto; flex:1;}
+  .item{
+    width:100%; text-align:left; padding:12px; margin:8px 0;
+    background:var(--panel2); border:1px solid var(--grid);
+    color:var(--text); border-radius:12px; cursor:pointer;
+  }
+  .item.active{outline:2px solid rgba(10,132,255,.8);}
+  .sub{color:var(--muted); font-size:12px; margin-top:4px;}
+  .content{flex:1; overflow:auto; padding:12px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;}
+  .pill{padding:6px 10px; border:1px solid var(--grid); border-radius:999px; background:var(--panel2); color:var(--muted); font-size:12px;}
+  .gridwrap{background:var(--panel); border:1px solid var(--grid); border-radius:14px; overflow:auto;}
+  .grid{
+    display:grid;
+    grid-template-columns: 220px repeat(24, 70px);
+    min-width: calc(220px + 24 * 70px);
+  }
+  .cell{
+    border-right:1px solid var(--grid);
+    border-bottom:1px solid var(--grid);
+    padding:8px;
+    font-size:12px;
+    min-height:52px;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--muted);
+  }
+  .head{position:sticky; top:0; background:rgba(19,19,26,.98); z-index:3; font-weight:700; color:var(--text);}
+  .head.left{left:0; position:sticky; z-index:4;}
+  .leftcol{
+    position:sticky; left:0; z-index:2;
+    background:rgba(19,19,26,.98);
+    justify-content:flex-start; color:var(--text); font-weight:600;
+  }
+  .dose{
+    width:100%;
+    padding:8px 10px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,214,10,.20);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .dose .small{font-size:11px; color:var(--muted);}
+  .dose.done{background:rgba(52,199,89,.22); border-color:rgba(52,199,89,.35);}
+  .dose.late{background:rgba(255,69,58,.22); border-color:rgba(255,69,58,.45);}
+  .muted{color:var(--muted)}
+  .empty{padding:16px; color:var(--muted)}
+  dialog{
+    border:none; border-radius:16px; padding:0; width:min(520px, 92vw);
+    background:var(--panel); color:var(--text);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+  }
+  .dlg-head{padding:14px 14px; border-bottom:1px solid var(--grid); font-weight:800;}
+  .dlg-body{padding:14px; display:flex; flex-direction:column; gap:10px;}
+  label{font-size:12px; color:var(--muted)}
+  input{
+    width:100%; padding:12px 12px; border-radius:12px;
+    background:var(--panel2); border:1px solid var(--grid); color:var(--text);
+    outline:none;
+  }
+  .dlg-actions{display:flex; gap:10px; justify-content:flex-end; padding:14px; border-top:1px solid var(--grid);}
+  .warnbox{
+    padding:12px; border-radius:12px; border:1px solid rgba(255,69,58,.45);
+    background:rgba(255,69,58,.18); color:var(--text); font-weight:700;
+  }
+  @media (max-width: 860px){
+    .left{width:38%}
+    .grid{grid-template-columns: 180px repeat(24, 64px); min-width: calc(180px + 24 * 64px);}
+  }
+</style>
+</head>
+
+<body>
+<div class="app">
+  <div class="left">
+    <div class="bar">
+      <div class="title">Patients</div>
+      <button class="btn" id="addPatientBtn">+</button>
+    </div>
+    <div class="list" id="patientList"></div>
+  </div>
+
+  <div class="right">
+    <div class="bar">
+      <div>
+        <div class="title" id="rightTitle">Select patient</div>
+        <div class="sub" id="rightSub"></div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn secondary" id="prevDayBtn">◀︎ Day</button>
+        <button class="btn secondary" id="nextDayBtn">Day ▶︎</button>
+        <button class="btn" id="addMedBtn" disabled>+ Med</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="row">
+        <span class="pill" id="todayPill"></span>
+        <span class="pill" id="fbPill">Firebase: checking…</span>
+        <span class="pill">Tap a dose block to record “given”</span>
+        <span class="pill">Warn if outside ±1h</span>
+      </div>
+
+      <div class="gridwrap" id="gridWrap">
+        <div class="empty">Select a patient to view MAR.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Patient Dialog -->
+<dialog id="patientDlg">
+  <div class="dlg-head">Add Patient</div>
+  <div class="dlg-body">
+    <div>
+      <label>Patient name</label>
+      <input id="patientName" placeholder="e.g., Kim" />
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="patientCancel">Cancel</button>
+    <button class="btn" id="patientSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Add Med Dialog -->
+<dialog id="medDlg">
+  <div class="dlg-head">Add Medication</div>
+  <div class="dlg-body">
+    <div>
+      <label>Medication name</label>
+      <input id="medName" placeholder="e.g., Metformin" />
+    </div>
+    <div>
+      <label>Times (24h, comma-separated)</label>
+      <input id="medTimes" placeholder="e.g., 09:00,13:00,21:00" />
+    </div>
+    <div class="muted" style="font-size:12px;">
+      Tip: 하루 여러 번이면 시간을 콤마로 추가하세요.
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="medCancel">Cancel</button>
+    <button class="btn" id="medSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Warning Dialog -->
+<dialog id="warnDlg">
+  <div class="dlg-head">⚠ 투여시간 경고</div>
+  <div class="dlg-body">
+    <div class="warnbox">투여시간 경고 - 약사에게 연락</div>
+    <div class="muted" id="warnDetail" style="font-size:12px;"></div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn" id="warnClose">Close</button>
+  </div>
+</dialog>
+
+<script type="module">
+/* ===========================
+   Firebase (CDN) - merged
+=========================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAo6SXsvtUurqDJaH1EUxqMOqCvHV-GHDo",
+  authDomain: "handle-5a293.firebaseapp.com",
+  projectId: "handle-5a293",
+  storageBucket: "handle-5a293.firebasestorage.app",
+  messagingSenderId: "784177638758",
+  appId: "1:784177638758:web:8f1c219333bcf23868aca7",
+  measurementId: "G-9EY3N4JKCB"
+};
+
+const fbPill = document.getElementById("fbPill");
+
+let app, auth, db;
+try{
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+
+  // expose for future sync/login work
+  window.firebaseApp = app;
+  window.firebaseAuth = auth;
+  window.firebaseDb = db;
+
+  fbPill.textContent = "Firebase: connected";
+}catch(e){
+  console.error("Firebase init error:", e);
+  fbPill.textContent = "Firebase: " + (e?.message || "init error");
+}
+
+/* ===========================
+   Mini MAR (Local) - original
+=========================== */
+
+/* ---------------------------
+   Storage
+--------------------------- */
+const KEY = "mini_mar_v1";
+function loadState(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return {patients:{}};
+    return JSON.parse(raw);
+  }catch(e){
+    return {patients:{}};
+  }
+}
+function saveState(){
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+
+/* ---------------------------
+   Utilities
+--------------------------- */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function ymd(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function parseTimesCSV(s){
+  if(!s) return [];
+  const parts = s.split(",").map(x=>x.trim()).filter(Boolean);
+  const ok = [];
+  for(const p of parts){
+    if(/^\d{2}:\d{2}$/.test(p)){
+      const [h,m]=p.split(":").map(Number);
+      if(h>=0 && h<=23 && m>=0 && m<=59) ok.push(p);
+    }
+  }
+  return [...new Set(ok)].sort();
+}
+function dtForDay(dayDate, hhmm){
+  const [h,m] = hhmm.split(":").map(Number);
+  return new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), h, m, 0, 0);
+}
+function minutesDiff(a,b){
+  return Math.abs((a.getTime()-b.getTime())/60000);
+}
+
+/* ---------------------------
+   State
+--------------------------- */
+let state = loadState();
+let selectedPatient = null;
+let currentDay = new Date();
+currentDay.setHours(0,0,0,0);
+
+/* ---------------------------
+   DOM
+--------------------------- */
+const patientListEl = document.getElementById("patientList");
+const rightTitleEl = document.getElementById("rightTitle");
+const rightSubEl = document.getElementById("rightSub");
+const gridWrapEl = document.getElementById("gridWrap");
+const todayPillEl = document.getElementById("todayPill");
+const addMedBtn = document.getElementById("addMedBtn");
+
+const patientDlg = document.getElementById("patientDlg");
+const patientName = document.getElementById("patientName");
+const patientSave = document.getElementById("patientSave");
+const patientCancel = document.getElementById("patientCancel");
+
+const medDlg = document.getElementById("medDlg");
+const medName = document.getElementById("medName");
+const medTimes = document.getElementById("medTimes");
+const medSave = document.getElementById("medSave");
+const medCancel = document.getElementById("medCancel");
+
+const warnDlg = document.getElementById("warnDlg");
+const warnClose = document.getElementById("warnClose");
+const warnDetail = document.getElementById("warnDetail");
+
+/* ---------------------------
+   Rendering
+--------------------------- */
+function renderPatients(){
+  const names = Object.keys(state.patients);
+  patientListEl.innerHTML = "";
+  if(names.length===0){
+    patientListEl.innerHTML = `<div class="empty">No patients. Tap +</div>`;
+    return;
+  }
+  for(const name of names){
+    const btn = document.createElement("button");
+    btn.className = "item" + (selectedPatient===name ? " active":"");
+    const meds = Object.keys(state.patients[name].meds || {});
+    btn.innerHTML = `<div>${name}</div><div class="sub">${meds.length} meds</div>`;
+    btn.onclick = ()=>{ selectPatient(name); };
+    patientListEl.appendChild(btn);
+  }
+}
+
+function renderHeader(){
+  todayPillEl.textContent = "Day: " + ymd(currentDay);
+  if(!selectedPatient){
+    rightTitleEl.textContent = "Select patient";
+    rightSubEl.textContent = "";
+    addMedBtn.disabled = true;
+  }else{
+    rightTitleEl.textContent = selectedPatient;
+    const medsCount = Object.keys(state.patients[selectedPatient].meds||{}).length;
+    rightSubEl.textContent = `${medsCount} meds · Tap dose to record`;
+    addMedBtn.disabled = false;
+  }
+}
+
+function renderGrid(){
+  if(!selectedPatient){
+    gridWrapEl.innerHTML = `<div class="empty">Select a patient to view MAR.</div>`;
+    return;
+  }
+  const patient = state.patients[selectedPatient];
+  const meds = patient.meds || {};
+  const medNames = Object.keys(meds);
+
+  if(medNames.length===0){
+    gridWrapEl.innerHTML = `<div class="empty">No meds. Tap “+ Med”.</div>`;
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "grid";
+
+  const h0 = document.createElement("div");
+  h0.className = "cell head left";
+  h0.textContent = "Medication";
+  grid.appendChild(h0);
+
+  for(let hr=0; hr<24; hr++){
+    const hc = document.createElement("div");
+    hc.className = "cell head";
+    hc.textContent = pad2(hr)+":00";
+    grid.appendChild(hc);
+  }
+
+  const dayKey = ymd(currentDay);
+
+  for(const med of medNames){
+    const lc = document.createElement("div");
+    lc.className = "cell leftcol";
+    lc.innerHTML = `<div style="display:flex; flex-direction:column; gap:4px;">
+      <div>${med}</div>
+      <div class="muted" style="font-size:11px;">${(meds[med].times||[]).join(", ")}</div>
+    </div>`;
+    grid.appendChild(lc);
+
+    const hist = (meds[med].history && meds[med].history[dayKey]) ? meds[med].history[dayKey] : [];
+    const bySched = {};
+    for(const r of hist){ if(r.sched) bySched[r.sched]=r; }
+
+    for(let hr=0; hr<24; hr++){
+      const c = document.createElement("div");
+      c.className = "cell";
+      c.style.justifyContent = "flex-start";
+      c.style.alignItems = "flex-start";
+
+      const times = (meds[med].times||[]).filter(t => Number(t.slice(0,2))===hr);
+
+      if(times.length===0){
+        c.textContent = "";
+      }else{
+        c.style.flexDirection = "column";
+        c.style.gap = "6px";
+        c.style.padding = "8px";
+        c.style.color = "var(--text)";
+
+        for(const t of times){
+          const rec = bySched[t];
+          const block = document.createElement("div");
+          block.className = "dose";
+          if(rec && rec.status==="ok") block.classList.add("done");
+          if(rec && rec.status==="late") block.classList.add("late");
+
+          const givenText = rec ? ("Given: "+rec.given) : "Tap to Give";
+          block.innerHTML = `<div><b>${t}</b></div><div class="small">${givenText}</div>`;
+
+          block.onclick = ()=> giveDose(med, t);
+          c.appendChild(block);
+        }
+      }
+
+      grid.appendChild(c);
+    }
+  }
+
+  gridWrapEl.innerHTML = "";
+  gridWrapEl.appendChild(grid);
+}
+
+/* ---------------------------
+   Actions
+--------------------------- */
+function selectPatient(name){
+  selectedPatient = name;
+  renderAll();
+}
+
+function addPatient(){
+  patientName.value = "";
+  patientDlg.showModal();
+  patientName.focus();
+}
+
+function savePatientAction(){
+  const name = patientName.value.trim();
+  if(!name) return;
+  if(!state.patients[name]){
+    state.patients[name] = { meds:{} };
+    saveState();
+  }
+  selectedPatient = name;
+  patientDlg.close();
+  renderAll();
+}
+
+function addMed(){
+  if(!selectedPatient) return;
+  medName.value = "";
+  medTimes.value = "";
+  medDlg.showModal();
+  medName.focus();
+}
+
+function saveMedAction(){
+  const m = medName.value.trim();
+  const times = parseTimesCSV(medTimes.value.trim());
+  if(!m || times.length===0) return;
+
+  const p = state.patients[selectedPatient];
+  p.meds = p.meds || {};
+  p.meds[m] = p.meds[m] || { times:[], history:{} };
+  p.meds[m].times = times;
+  p.meds[m].history = p.meds[m].history || {};
+
+  saveState();
+  medDlg.close();
+  renderAll();
+}
+
+function giveDose(med, schedTime){
+  const p = state.patients[selectedPatient];
+  const md = p.meds[med];
+  const dayKey = ymd(currentDay);
+  md.history = md.history || {};
+  md.history[dayKey] = md.history[dayKey] || [];
+
+  const now = new Date();
+  const sched = dtForDay(currentDay, schedTime);
+  const diff = minutesDiff(now, sched);
+  const status = diff <= 60 ? "ok" : "late";
+
+  const rec = {
+    sched: schedTime,
+    given: pad2(now.getHours()) + ":" + pad2(now.getMinutes()),
+    status
+  };
+
+  const arr = md.history[dayKey];
+  const idx = arr.findIndex(x => x.sched === schedTime);
+  if(idx >= 0) arr[idx] = rec; else arr.push(rec);
+
+  saveState();
+  renderAll();
+
+  if(status === "late"){
+    warnDetail.textContent = `Scheduled ${schedTime} · Given ${rec.given} · Diff ${Math.round(diff)} min`;
+    warnDlg.showModal();
+  }
+}
+
+/* ---------------------------
+   Day nav
+--------------------------- */
+function shiftDay(delta){
+  currentDay = new Date(currentDay.getTime() + delta*24*60*60*1000);
+  currentDay.setHours(0,0,0,0);
+  renderAll();
+}
+
+/* ---------------------------
+   Wiring
+--------------------------- */
+document.getElementById("addPatientBtn").onclick = addPatient;
+patientSave.onclick = savePatientAction;
+patientCancel.onclick = ()=>patientDlg.close();
+
+addMedBtn.onclick = addMed;
+medSave.onclick = saveMedAction;
+medCancel.onclick = ()=>medDlg.close();
+
+document.getElementById("prevDayBtn").onclick = ()=>shiftDay(-1);
+document.getElementById("nextDayBtn").onclick = ()=>shiftDay(1);
+
+warnClose.onclick = ()=>warnDlg.close();
+
+/* ---------------------------
+   Render All
+--------------------------- */
+function renderAll(){
+  renderPatients();
+  renderHeader();
+  renderGrid();
+}
+
+// init
+renderAll();
+
+</script>
+</body>
+</html>
