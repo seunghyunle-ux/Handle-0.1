@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Mini MAR · Facility Sync</title>
+<style>
+  :root{
+    --bg:#0b0b0f; --panel:#13131a; --panel2:#1b1b25;
+    --text:#f2f2f7; --muted:#a1a1aa; --grid:#2a2a35;
+    --accent:#0a84ff; --warn:#ff453a; --due:#ffd60a; --done:#34c759;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial; background:var(--bg); color:var(--text); height:100vh; overflow:hidden;}
+  .hidden{display:none!important}
+
+  /* Login */
+  .login{height:100vh; width:100vw; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .card{
+    width:min(560px, 94vw);
+    background:var(--panel);
+    border:1px solid var(--grid);
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.55);
+  }
+  .card .head{padding:16px; font-weight:900; border-bottom:1px solid var(--grid)}
+  .card .body{padding:16px; display:flex; flex-direction:column; gap:12px}
+  .card .foot{padding:16px; border-top:1px solid var(--grid); display:flex; justify-content:flex-end; gap:10px}
+  label{font-size:12px; color:var(--muted)}
+  input{
+    width:100%; padding:12px 12px; border-radius:12px;
+    background:var(--panel2); border:1px solid var(--grid); color:var(--text);
+    outline:none;
+  }
+  .btn{
+    background:var(--accent); color:white; border:none; border-radius:10px;
+    padding:10px 12px; font-weight:800; cursor:pointer;
+  }
+  .btn.secondary{background:var(--panel2); border:1px solid var(--grid); color:var(--text);}
+  .btn.danger{background:var(--warn);}
+  .muted{color:var(--muted)}
+  .small{font-size:12px; color:var(--muted)}
+  .err{padding:10px 12px; border:1px solid rgba(255,69,58,.45); background:rgba(255,69,58,.18); border-radius:12px; font-weight:800}
+
+  /* App layout */
+  .app{display:flex; height:100vh; width:100vw;}
+  .left{
+    width:28%;
+    min-width:180px;
+    background:var(--panel);
+    border-right:1px solid var(--grid);
+    display:flex; flex-direction:column;
+  }
+  .right{flex:1; display:flex; flex-direction:column; overflow:hidden;}
+
+  body.detail .left{display:none;}
+  body.detail .right{flex:1;}
+
+  .bar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 12px; border-bottom:1px solid var(--grid); background:rgba(19,19,26,.95);
+  }
+  .title{font-weight:900; font-size:16px}
+  .sub{color:var(--muted); font-size:12px; margin-top:4px;}
+  .list{padding:10px; overflow:auto; flex:1;}
+  .item{
+    width:100%; text-align:left; padding:12px; margin:8px 0;
+    background:var(--panel2); border:1px solid var(--grid);
+    color:var(--text); border-radius:12px; cursor:pointer;
+  }
+  .content{flex:1; overflow:hidden; padding:12px; display:flex; flex-direction:column; gap:10px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .pill{padding:6px 10px; border:1px solid var(--grid); border-radius:999px; background:var(--panel2); color:var(--muted); font-size:12px;}
+  .empty{padding:16px; color:var(--muted)}
+
+  /* Timeline (72h) */
+  .timelineWrap{
+    background:var(--panel);
+    border:1px solid var(--grid);
+    border-radius:14px;
+    overflow:auto;
+    flex:1;
+    position:relative;
+  }
+  .timelineInner{position:relative; min-height:420px;}
+  .stickyTop{
+    position:sticky; top:0; z-index:20;
+    background:rgba(19,19,26,.98);
+    border-bottom:1px solid var(--grid);
+  }
+  .dateRow,.timeRow{display:flex; align-items:stretch;}
+  .leftStub{
+    width:240px; min-width:240px;
+    border-right:1px solid var(--grid);
+    padding:10px;
+    font-weight:900;
+  }
+  .datesArea,.timesArea{position:relative; flex:1;}
+  .dateBlock{
+    position:absolute; top:0; bottom:0;
+    border-right:1px solid var(--grid);
+    padding:10px 8px;
+    color:var(--text);
+    font-weight:900;
+    font-size:12px;
+    display:flex; align-items:center;
+    white-space:nowrap;
+  }
+  .tick{
+    position:absolute; top:0; bottom:0;
+    border-right:1px solid var(--grid);
+    opacity:.75;
+  }
+  .tickLabel{
+    position:absolute; top:10px;
+    transform:translateX(-50%);
+    font-size:11px;
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .medRow{display:flex; border-bottom:1px solid var(--grid); min-height:64px;}
+  .medLeft{
+    width:240px; min-width:240px;
+    border-right:1px solid var(--grid);
+    padding:10px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .medName{font-weight:900;}
+  .medMeta{font-size:11px; color:var(--muted);}
+  .lane{position:relative; flex:1; min-height:64px;}
+
+  .dose{
+    position:absolute;
+    top:10px;
+    width:150px;
+    min-height:42px;
+    padding:8px 10px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,214,10,.20);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    cursor:pointer;
+    user-select:none;
+    overflow:hidden;
+  }
+  .dose .small{font-size:11px; color:var(--muted);}
+  .dose.done{background:rgba(52,199,89,.22); border-color:rgba(52,199,89,.35);}
+  .dose.late{background:rgba(255,69,58,.22); border-color:rgba(255,69,58,.45);}
+
+  .nowLine{
+    position:absolute;
+    top:0; bottom:0;
+    width:2px;
+    background:#ff3b30;
+    z-index:15;
+    box-shadow:0 0 0 1px rgba(255,59,48,.25);
+  }
+
+  /* dialogs */
+  dialog{
+    border:none; border-radius:16px; padding:0; width:min(560px, 92vw);
+    background:var(--panel); color:var(--text);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+  }
+  .dlg-head{padding:14px 14px; border-bottom:1px solid var(--grid); font-weight:900;}
+  .dlg-body{padding:14px; display:flex; flex-direction:column; gap:10px;}
+  .dlg-actions{display:flex; gap:10px; justify-content:flex-end; padding:14px; border-top:1px solid var(--grid);}
+  .days{display:flex; flex-wrap:wrap; gap:8px;}
+  .daychip{
+    display:flex; align-items:center; gap:6px;
+    padding:8px 10px;
+    border-radius:999px;
+    border:1px solid var(--grid);
+    background:var(--panel2);
+    font-size:12px;
+    color:var(--text);
+    user-select:none;
+  }
+  .daychip input{width:auto; margin:0;}
+  .warnbox{
+    padding:12px; border-radius:12px; border:1px solid rgba(255,69,58,.45);
+    background:rgba(255,69,58,.18); color:var(--text); font-weight:900;
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login" id="loginScreen">
+  <div class="card">
+    <div class="head">Mini MAR · Facility Sync (Firebase)</div>
+    <div class="body">
+      <div id="loginError" class="err hidden"></div>
+      <div>
+        <label>Facility Code</label>
+        <input id="facilityCode" placeholder="e.g., FAC001" autocomplete="off" />
+      </div>
+      <div>
+        <label>Nurse ID</label>
+        <input id="nurseId" placeholder="e.g., n1234" autocomplete="username" />
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="password" type="password" placeholder="password" autocomplete="current-password" />
+      </div>
+      <div class="small">
+        운영 방식(A-A-B): 관리자(약사)가 Firebase에서 <b>시설 문서</b>와 <b>계정(Auth)</b> + <b>users/{uid} 프로필(시설/역할)</b>을 미리 생성해야 합니다.
+      </div>
+      <div class="small">
+        ※ 아래 코드의 <b>firebaseConfig</b>를 네 프로젝트 값으로 채워야 작동합니다.
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="loginBtn">Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app hidden" id="appScreen">
+  <div class="left">
+    <div class="bar">
+      <div class="title">Patients</div>
+      <button class="btn" id="addPatientBtn">+</button>
+    </div>
+    <div class="list" id="patientList"></div>
+  </div>
+
+  <div class="right">
+    <div class="bar">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="btn secondary" id="backBtn" style="display:none;">← Back</button>
+        <div>
+          <div class="title" id="rightTitle">Select patient</div>
+          <div class="sub" id="rightSub"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn secondary" id="nowBtn" disabled>Now</button>
+        <button class="btn secondary" id="prevDayBtn">◀︎ Day</button>
+        <button class="btn secondary" id="nextDayBtn">Day ▶︎</button>
+        <button class="btn" id="addMedBtn" disabled>+ Med</button>
+        <button class="btn secondary" id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="row">
+        <span class="pill" id="todayPill"></span>
+        <span class="pill">Timeline: 72h (±36h)</span>
+        <span class="pill">Tap dose to record “given” (warn if outside ±1h)</span>
+      </div>
+
+      <div class="timelineWrap" id="timelineWrap">
+        <div class="empty">Select a patient to view MAR.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Patient Dialog (Name + MRN + DOB) -->
+<dialog id="patientDlg">
+  <div class="dlg-head">Add Patient</div>
+  <div class="dlg-body">
+    <div>
+      <label>Full name</label>
+      <input id="patientName" placeholder="e.g., Kim Minsoo" />
+    </div>
+    <div>
+      <label>MRN</label>
+      <input id="patientMRN" placeholder="e.g., 202400123" />
+    </div>
+    <div>
+      <label>Date of birth (DOB)</label>
+      <input id="patientDOB" type="date" />
+    </div>
+    <div class="small">※ PHI 포함: 실제 배포 시 HTTPS + Rules + 계정관리 필수</div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="patientCancel">Cancel</button>
+    <button class="btn" id="patientSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Add Med Dialog -->
+<dialog id="medDlg">
+  <div class="dlg-head">Add Medication</div>
+  <div class="dlg-body">
+    <div>
+      <label>Medication name</label>
+      <input id="medName" placeholder="e.g., Metformin" />
+    </div>
+    <div>
+      <label>Times (24h, comma-separated)</label>
+      <input id="medTimes" placeholder="e.g., 09:00,13:00,21:00" />
+    </div>
+    <div>
+      <label>Days of week</label>
+      <div class="days" id="daysBox"></div>
+      <div class="small">특정 요일만 먹는 약이면 해당 요일만 체크</div>
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="medCancel">Cancel</button>
+    <button class="btn" id="medSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Warning Dialog -->
+<dialog id="warnDlg">
+  <div class="dlg-head">⚠ 투여시간 경고</div>
+  <div class="dlg-body">
+    <div class="warnbox">투여시간 경고 - 약사에게 연락</div>
+    <div class="muted" id="warnDetail" style="font-size:12px;"></div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn" id="warnClose">Close</button>
+  </div>
+</dialog>
+
+<script type="module">
+/* ===========================
+   Firebase SDK imports
+=========================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, collection, addDoc, setDoc,
+  onSnapshot, query, orderBy, where, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+/* ===========================
+   0) FILL THIS
+=========================== */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "SENDER_ID",
+  appId: "APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* ===========================
+   Utilities
+=========================== */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function ymd(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function parseTimesCSV(s){
+  if(!s) return [];
+  const parts = s.split(",").map(x=>x.trim()).filter(Boolean);
+  const ok = [];
+  for(const p of parts){
+    if(/^\d{2}:\d{2}$/.test(p)){
+      const [h,m]=p.split(":").map(Number);
+      if(h>=0 && h<=23 && m>=0 && m<=59) ok.push(p);
+    }
+  }
+  return [...new Set(ok)].sort();
+}
+function minutesDiff(a,b){ return Math.abs((a.getTime()-b.getTime())/60000); }
+function dtAt(dateObj, hhmm){
+  const [h,m] = hhmm.split(":").map(Number);
+  return new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), h, m, 0, 0);
+}
+function calcAge(dobStr){
+  if(!dobStr) return "";
+  const dob = new Date(dobStr);
+  if(Number.isNaN(dob.getTime())) return "";
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+  return age;
+}
+const DAY_LABELS = ["일","월","화","수","목","금","토"]; // 0..6
+function daysToText(days){
+  const sorted = [...days].sort((x,y)=>x-y);
+  return sorted.map(d=>DAY_LABELS[d]).join(",");
+}
+function medAppliesDay(medObj, dateObj){
+  const d = dateObj.getDay();
+  const days = (medObj.days && Array.isArray(medObj.days) && medObj.days.length) ? medObj.days : [0,1,2,3,4,5,6];
+  return days.includes(d);
+}
+
+/* ===========================
+   Timeline config
+=========================== */
+const HOURS_TOTAL = 72;     // 3 days
+const HOURS_BEFORE = 36;   // left side
+const PX_PER_HOUR = 110;
+const LEFT_STUB_W = 240;
+
+/* ===========================
+   Session + caches
+=========================== */
+let session = { facilityCode:"", nurseId:"", role:"", displayName:"", uid:"" };
+
+const patientsCache = {};          // {patientId: {id,name,mrn,dob,...}}
+const medsCacheByPatient = {};     // {patientId: {medId: {id,name,times,days}}}
+const adminsCache = {};            // {patientId: {medId: {adminId: rec}}}
+
+let selectedPatientId = null;
+let currentDay = new Date(); currentDay.setHours(0,0,0,0);
+
+// unsub handlers
+let unsubPatients = null;
+const unsubMeds = {};              // patientId -> fn
+const unsubAdmins = {};            // patientId|medId -> fn
+
+/* ===========================
+   DOM
+=========================== */
+const loginScreen = document.getElementById("loginScreen");
+const appScreen = document.getElementById("appScreen");
+const facilityCodeEl = document.getElementById("facilityCode");
+const nurseIdEl = document.getElementById("nurseId");
+const passwordEl = document.getElementById("password");
+const loginBtn = document.getElementById("loginBtn");
+const loginError = document.getElementById("loginError");
+
+const patientListEl = document.getElementById("patientList");
+const rightTitleEl = document.getElementById("rightTitle");
+const rightSubEl = document.getElementById("rightSub");
+const todayPillEl = document.getElementById("todayPill");
+const timelineWrapEl = document.getElementById("timelineWrap");
+const addMedBtn = document.getElementById("addMedBtn");
+const backBtn = document.getElementById("backBtn");
+const nowBtn = document.getElementById("nowBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+
+const patientDlg = document.getElementById("patientDlg");
+const patientName = document.getElementById("patientName");
+const patientMRN = document.getElementById("patientMRN");
+const patientDOB = document.getElementById("patientDOB");
+const patientSave = document.getElementById("patientSave");
+const patientCancel = document.getElementById("patientCancel");
+
+const medDlg = document.getElementById("medDlg");
+const medName = document.getElementById("medName");
+const medTimes = document.getElementById("medTimes");
+const daysBox = document.getElementById("daysBox");
+const medSave = document.getElementById("medSave");
+const medCancel = document.getElementById("medCancel");
+
+const warnDlg = document.getElementById("warnDlg");
+const warnClose = document.getElementById("warnClose");
+const warnDetail = document.getElementById("warnDetail");
+
+/* ===========================
+   Weekday chips
+=========================== */
+const DAY_CHIPS = [
+  {d:1, label:"월"}, {d:2, label:"화"}, {d:3, label:"수"}, {d:4, label:"목"},
+  {d:5, label:"금"}, {d:6, label:"토"}, {d:0, label:"일"},
+];
+function renderDayChips(allChecked=true){
+  daysBox.innerHTML = "";
+  for(const x of DAY_CHIPS){
+    const wrap = document.createElement("label");
+    wrap.className = "daychip";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = String(x.d);
+    cb.checked = allChecked;
+    const span = document.createElement("span");
+    span.textContent = x.label;
+    wrap.appendChild(cb);
+    wrap.appendChild(span);
+    daysBox.appendChild(wrap);
+  }
+}
+function getSelectedDays(){
+  const cbs = daysBox.querySelectorAll("input[type=checkbox]");
+  const out = [];
+  cbs.forEach(cb=>{ if(cb.checked) out.push(Number(cb.value)); });
+  return out.length ? out : [0,1,2,3,4,5,6];
+}
+
+/* ===========================
+   Firebase: login + listeners
+=========================== */
+async function loginWithFacility(facilityCode, nurseId, password){
+  const email = `${nurseId}@${facilityCode}.local`;
+
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const uid = cred.user.uid;
+
+  // user profile
+  const uref = doc(db, "users", uid);
+  const usnap = await getDoc(uref);
+  if(!usnap.exists()){
+    await signOut(auth);
+    throw new Error("users/{uid} profile not found. Admin must create it.");
+  }
+  const u = usnap.data();
+  if(u.facilityCode !== facilityCode){
+    await signOut(auth);
+    throw new Error("Facility code mismatch.");
+  }
+
+  // facility exists
+  const facRef = doc(db, "facilities", facilityCode);
+  const facSnap = await getDoc(facRef);
+  if(!facSnap.exists()){
+    await signOut(auth);
+    throw new Error("Facility document not found. Admin must create facilities/{facilityCode}.");
+  }
+
+  session = {
+    facilityCode,
+    nurseId: u.nurseId || nurseId,
+    role: u.role || "nurse",
+    displayName: u.displayName || (u.nurseId || nurseId),
+    uid
+  };
+
+  // start listeners
+  startFacilityListeners();
+}
+
+function stopAllListeners(){
+  if(unsubPatients){ unsubPatients(); unsubPatients = null; }
+  for(const k in unsubMeds){ unsubMeds[k](); delete unsubMeds[k]; }
+  for(const k in unsubAdmins){ unsubAdmins[k](); delete unsubAdmins[k]; }
+}
+
+function startFacilityListeners(){
+  stopAllListeners();
+
+  // clear caches
+  for(const k in patientsCache) delete patientsCache[k];
+  for(const k in medsCacheByPatient) delete medsCacheByPatient[k];
+  for(const k in adminsCache) delete adminsCache[k];
+  selectedPatientId = null;
+
+  const pref = collection(db, "facilities", session.facilityCode, "patients");
+  const pq = query(pref, orderBy("createdAt", "asc"));
+
+  unsubPatients = onSnapshot(pq, (snap)=>{
+    for(const ch of snap.docChanges()){
+      const id = ch.doc.id;
+      if(ch.type === "removed"){
+        delete patientsCache[id];
+        delete medsCacheByPatient[id];
+        delete adminsCache[id];
+      }else{
+        patientsCache[id] = { id, ...ch.doc.data() };
+      }
+    }
+    renderAll();
+  });
+}
+
+function listenPatientMeds(patientId){
+  if(unsubMeds[patientId]) return;
+  medsCacheByPatient[patientId] = medsCacheByPatient[patientId] || {};
+
+  const mref = collection(db, "facilities", session.facilityCode, "patients", patientId, "meds");
+  const mq = query(mref, orderBy("createdAt", "asc"));
+
+  unsubMeds[patientId] = onSnapshot(mq, (snap)=>{
+    for(const ch of snap.docChanges()){
+      const medId = ch.doc.id;
+      if(ch.type === "removed"){
+        delete medsCacheByPatient[patientId][medId];
+        // admins unsub cleanup
+        const key = `${patientId}|${medId}`;
+        if(unsubAdmins[key]){ unsubAdmins[key](); delete unsubAdmins[key]; }
+        if(adminsCache[patientId]) delete adminsCache[patientId][medId];
+      }else{
+        medsCacheByPatient[patientId][medId] = { id: medId, ...ch.doc.data() };
+        listenMedAdmins(patientId, medId);
+      }
+    }
+    renderAll();
+  });
+}
+
+function listenMedAdmins(patientId, medId){
+  const key = `${patientId}|${medId}`;
+  if(unsubAdmins[key]) return;
+
+  adminsCache[patientId] = adminsCache[patientId] || {};
+  adminsCache[patientId][medId] = adminsCache[patientId][medId] || {};
+
+  const aref = collection(db, "facilities", session.facilityCode, "patients", patientId, "meds", medId, "admins");
+
+  // performance: listen last 7 days of scheduledAtMs
+  const now = new Date();
+  const from = new Date(now.getTime() - 7*24*3600*1000);
+
+  const aq = query(
+    aref,
+    where("scheduledAtMs", ">=", from.getTime()),
+    orderBy("scheduledAtMs", "asc")
+  );
+
+  unsubAdmins[key] = onSnapshot(aq, (snap)=>{
+    for(const ch of snap.docChanges()){
+      const adminId = ch.doc.id;
+      if(ch.type === "removed"){
+        delete adminsCache[patientId][medId][adminId];
+      }else{
+        adminsCache[patientId][medId][adminId] = { id: adminId, ...ch.doc.data() };
+      }
+    }
+    renderAll();
+  });
+}
+
+/* ===========================
+   Firebase: write operations
+=========================== */
+async function addPatientToDB({name, mrn, dob}){
+  const pref = collection(db, "facilities", session.facilityCode, "patients");
+  await addDoc(pref, { name, mrn, dob, createdAt: serverTimestamp() });
+}
+async function addMedToDB(patientId, {name, times, days}){
+  const mref = collection(db, "facilities", session.facilityCode, "patients", patientId, "meds");
+  await addDoc(mref, { name, times, days, createdAt: serverTimestamp() });
+}
+async function recordDoseToDB(patientId, medId, scheduledAtDT, status){
+  const now = new Date();
+  const adminId = String(scheduledAtDT.getTime()); // stable key
+  const ref = doc(db, "facilities", session.facilityCode, "patients", patientId, "meds", medId, "admins", adminId);
+  await setDoc(ref, {
+    scheduledAtMs: scheduledAtDT.getTime(),
+    givenAtMs: now.getTime(),
+    status,
+    nurseId: session.nurseId,
+    nurseName: session.displayName,
+    updatedAt: serverTimestamp(),
+  }, { merge:true });
+}
+
+/* ===========================
+   Rendering: Patients list + header + timeline
+=========================== */
+function renderPatients(){
+  const arr = Object.values(patientsCache);
+  patientListEl.innerHTML = "";
+
+  if(arr.length === 0){
+    patientListEl.innerHTML = `<div class="empty">No patients. Tap +</div>`;
+    return;
+  }
+
+  for(const p of arr){
+    const btn = document.createElement("button");
+    btn.className = "item";
+    btn.innerHTML = `
+      <div style="font-weight:900;">${escapeHtml(p.name || "")}</div>
+      <div class="small">MRN: ${escapeHtml(p.mrn || "")}</div>
+      <div class="small">DOB: ${escapeHtml(p.dob || "")}</div>
+    `;
+    btn.onclick = ()=> enterPatient(p.id);
+    patientListEl.appendChild(btn);
+  }
+}
+
+function renderHeader(){
+  todayPillEl.textContent = `Facility: ${session.facilityCode || "-"} · Nurse: ${session.displayName || "-"} · Day: ${ymd(currentDay)}`;
+
+  if(!selectedPatientId){
+    rightTitleEl.textContent = "Select patient";
+    rightSubEl.textContent = "";
+    addMedBtn.disabled = true;
+    backBtn.style.display = "none";
+    nowBtn.disabled = true;
+    document.body.classList.remove("detail");
+    return;
+  }
+
+  const p = patientsCache[selectedPatientId];
+  const age = p?.dob ? calcAge(p.dob) : "";
+  rightTitleEl.textContent = p?.name || "Patient";
+  rightSubEl.textContent = `MRN: ${p?.mrn || "-"} · DOB: ${p?.dob || "-"}${age!=="" ? ` · Age: ${age}`:""}`;
+  addMedBtn.disabled = false;
+  backBtn.style.display = "inline-block";
+  nowBtn.disabled = false;
+  document.body.classList.add("detail");
+}
+
+function renderTimeline(){
+  if(!selectedPatientId){
+    timelineWrapEl.innerHTML = `<div class="empty">Select a patient to view MAR.</div>`;
+    return;
+  }
+  const meds = medsCacheByPatient[selectedPatientId] || {};
+  const medList = Object.values(meds);
+
+  if(medList.length === 0){
+    timelineWrapEl.innerHTML = `<div class="empty">No meds. Tap “+ Med”.</div>`;
+    return;
+  }
+
+  // range window anchored to currentDay
+  const rangeStart = new Date(currentDay.getTime() - HOURS_BEFORE*3600*1000);
+  const rangeEnd   = new Date(rangeStart.getTime() + HOURS_TOTAL*3600*1000);
+  const totalWidth = HOURS_TOTAL * PX_PER_HOUR;
+
+  const inner = document.createElement("div");
+  inner.className = "timelineInner";
+  inner.style.minWidth = (LEFT_STUB_W + totalWidth) + "px";
+
+  // sticky header
+  const sticky = document.createElement("div");
+  sticky.className = "stickyTop";
+
+  // date row
+  const dateRow = document.createElement("div");
+  dateRow.className = "dateRow";
+  const dateStub = document.createElement("div");
+  dateStub.className = "leftStub";
+  dateStub.textContent = "Time View";
+  const datesArea = document.createElement("div");
+  datesArea.className = "datesArea";
+  datesArea.style.height = "44px";
+  datesArea.style.width = totalWidth + "px";
+  datesArea.style.position = "relative";
+
+  // date blocks
+  {
+    const firstMid = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate(), 0,0,0,0);
+    let cur = firstMid;
+    while(cur < rangeEnd){
+      const next = new Date(cur.getTime() + 24*3600*1000);
+      const blockStart = Math.max(cur.getTime(), rangeStart.getTime());
+      const blockEnd = Math.min(next.getTime(), rangeEnd.getTime());
+      const left = ((blockStart - rangeStart.getTime())/3600000) * PX_PER_HOUR;
+      const width = ((blockEnd - blockStart)/3600000) * PX_PER_HOUR;
+
+      const b = document.createElement("div");
+      b.className = "dateBlock";
+      b.style.left = left + "px";
+      b.style.width = width + "px";
+      b.textContent = `${ymd(cur)}`;
+      datesArea.appendChild(b);
+      cur = next;
+    }
+  }
+
+  dateRow.appendChild(dateStub);
+  dateRow.appendChild(datesArea);
+
+  // time row
+  const timeRow = document.createElement("div");
+  timeRow.className = "timeRow";
+  const timeStub = document.createElement("div");
+  timeStub.className = "leftStub";
+  timeStub.textContent = "Scheduled";
+  const timesArea = document.createElement("div");
+  timesArea.className = "timesArea";
+  timesArea.style.height = "42px";
+  timesArea.style.width = totalWidth + "px";
+  timesArea.style.position = "relative";
+
+  for(let h=0; h<=HOURS_TOTAL; h++){
+    const x = h * PX_PER_HOUR;
+    const t = new Date(rangeStart.getTime() + h*3600*1000);
+
+    const tick = document.createElement("div");
+    tick.className = "tick";
+    tick.style.left = x + "px";
+    timesArea.appendChild(tick);
+
+    if(h % 6 === 0){
+      const lab = document.createElement("div");
+      lab.className = "tickLabel";
+      lab.style.left = x + "px";
+      lab.textContent = `${pad2(t.getHours())}:00`;
+      timesArea.appendChild(lab);
+    }
+  }
+
+  timeRow.appendChild(timeStub);
+  timeRow.appendChild(timesArea);
+
+  sticky.appendChild(dateRow);
+  sticky.appendChild(timeRow);
+  inner.appendChild(sticky);
+
+  // now line
+  const now = new Date();
+  if(now >= rangeStart && now <= rangeEnd){
+    const nowX = LEFT_STUB_W + ((now.getTime()-rangeStart.getTime())/3600000)*PX_PER_HOUR;
+    const nl = document.createElement("div");
+    nl.className = "nowLine";
+    nl.style.left = nowX + "px";
+    inner.appendChild(nl);
+  }
+
+  // rows
+  const patientAdmins = adminsCache[selectedPatientId] || {};
+  for(const md of medList){
+    const row = document.createElement("div");
+    row.className = "medRow";
+
+    const left = document.createElement("div");
+    left.className = "medLeft";
+    left.innerHTML = `
+      <div class="medName">${escapeHtml(md.name || "")}</div>
+      <div class="medMeta">${escapeHtml((md.times||[]).join(", "))} · 요일: ${escapeHtml(daysToText(md.days || [0,1,2,3,4,5,6]))}</div>
+    `;
+
+    const lane = document.createElement("div");
+    lane.className = "lane";
+    lane.style.width = totalWidth + "px";
+
+    const medAdmins = (patientAdmins[md.id] || {});
+    // Build scheduled doses in range (by days)
+    const dayIter = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate(), 0,0,0,0);
+    const endDay = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), rangeEnd.getDate(), 0,0,0,0);
+
+    for(let d = new Date(dayIter); d <= endDay; d = new Date(d.getTime() + 24*3600*1000)){
+      if(!medAppliesDay(md, d)) continue;
+      for(const t of (md.times || [])){
+        const schedDT = dtAt(d, t);
+        if(schedDT < rangeStart || schedDT > rangeEnd) continue;
+
+        const leftPx = ((schedDT.getTime()-rangeStart.getTime())/3600000) * PX_PER_HOUR;
+        const adminKey = String(schedDT.getTime());
+        const rec = medAdmins[adminKey];
+
+        const block = document.createElement("div");
+        block.className = "dose";
+        block.style.left = (leftPx + 10) + "px";
+
+        if(rec && rec.status === "ok") block.classList.add("done");
+        if(rec && rec.status === "late") block.classList.add("late");
+
+        const givenText = rec
+          ? `Given: ${new Date(rec.givenAtMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · ${escapeHtml(rec.nurseName || rec.nurseId || "")}`
+          : "Tap to Give";
+
+        block.innerHTML = `
+          <div><b>${escapeHtml(t)}</b> <span class="muted" style="font-weight:700;">(${ymd(d)})</span></div>
+          <div class="small">${givenText}</div>
+        `;
+
+        block.onclick = ()=> giveDose(md.id, schedDT);
+        lane.appendChild(block);
+      }
+    }
+
+    row.appendChild(left);
+    row.appendChild(lane);
+    inner.appendChild(row);
+  }
+
+  timelineWrapEl.innerHTML = "";
+  timelineWrapEl.appendChild(inner);
+
+  // auto scroll to now
+  setTimeout(()=>scrollToNow(rangeStart), 0);
+}
+
+function scrollToNow(rangeStart){
+  const now = new Date();
+  const visible = timelineWrapEl.clientWidth;
+  const x = LEFT_STUB_W + ((now.getTime()-rangeStart.getTime())/3600000)*PX_PER_HOUR;
+  if(Number.isFinite(x)){
+    timelineWrapEl.scrollLeft = Math.max(0, x - visible*0.45);
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+
+/* ===========================
+   UI actions
+=========================== */
+function enterPatient(patientId){
+  selectedPatientId = patientId;
+  listenPatientMeds(patientId);
+  renderAll();
+}
+
+function goBack(){
+  selectedPatientId = null;
+  renderAll();
+}
+
+function shiftDay(delta){
+  currentDay = new Date(currentDay.getTime() + delta*24*3600*1000);
+  currentDay.setHours(0,0,0,0);
+  renderAll();
+}
+
+async function giveDose(medId, schedDT){
+  const now = new Date();
+  const diff = minutesDiff(now, schedDT);
+  const status = diff <= 60 ? "ok" : "late";
+
+  await recordDoseToDB(selectedPatientId, medId, schedDT, status);
+
+  if(status === "late"){
+    warnDetail.textContent = `Scheduled ${schedDT.toLocaleString()} · Given ${now.toLocaleString()} · Diff ${Math.round(diff)} min`;
+    warnDlg.showModal();
+  }
+}
+
+/* ===========================
+   Dialog actions
+=========================== */
+function openAddPatient(){
+  patientName.value = "";
+  patientMRN.value = "";
+  patientDOB.value = "";
+  patientDlg.showModal();
+  patientName.focus();
+}
+
+async function savePatient(){
+  const name = patientName.value.trim();
+  const mrn = patientMRN.value.trim();
+  const dob = patientDOB.value; // YYYY-MM-DD
+  if(!name || !mrn || !dob) return;
+
+  await addPatientToDB({name, mrn, dob});
+  patientDlg.close();
+}
+
+function openAddMed(){
+  medName.value = "";
+  medTimes.value = "";
+  renderDayChips(true);
+  medDlg.showModal();
+  medName.focus();
+}
+
+async function saveMed(){
+  if(!selectedPatientId) return;
+  const name = medName.value.trim();
+  const times = parseTimesCSV(medTimes.value.trim());
+  const days = getSelectedDays();
+  if(!name || times.length===0) return;
+
+  await addMedToDB(selectedPatientId, {name, times, days});
+  medDlg.close();
+}
+
+/* ===========================
+   Render All
+=========================== */
+function renderAll(){
+  renderPatients();
+  renderHeader();
+  renderTimeline();
+}
+
+/* ===========================
+   Wiring
+=========================== */
+loginBtn.onclick = async ()=>{
+  loginError.classList.add("hidden");
+  loginError.textContent = "";
+
+  const facilityCode = facilityCodeEl.value.trim();
+  const nurseId = nurseIdEl.value.trim();
+  const password = passwordEl.value;
+
+  if(!facilityCode || !nurseId || !password){
+    loginError.textContent = "Facility Code / Nurse ID / Password required.";
+    loginError.classList.remove("hidden");
+    return;
+  }
+
+  try{
+    await loginWithFacility(facilityCode, nurseId, password);
+    loginScreen.classList.add("hidden");
+    appScreen.classList.remove("hidden");
+    renderAll();
+  }catch(e){
+    loginError.textContent = e?.message || "Login failed.";
+    loginError.classList.remove("hidden");
+  }
+};
+
+document.getElementById("addPatientBtn").onclick = openAddPatient;
+patientSave.onclick = savePatient;
+patientCancel.onclick = ()=>patientDlg.close();
+
+document.getElementById("prevDayBtn").onclick = ()=>shiftDay(-1);
+document.getElementById("nextDayBtn").onclick = ()=>shiftDay(1);
+nowBtn.onclick = ()=>{
+  currentDay = new Date(); currentDay.setHours(0,0,0,0);
+  renderAll();
+};
+
+backBtn.onclick = goBack;
+
+addMedBtn.onclick = openAddMed;
+medSave.onclick = saveMed;
+medCancel.onclick = ()=>medDlg.close();
+
+warnClose.onclick = ()=>warnDlg.close();
+
+logoutBtn.onclick = async ()=>{
+  stopAllListeners();
+  await signOut(auth);
+  location.reload();
+};
+
+// enable/disable med button based on selection in renderHeader; but initial state:
+addMedBtn.disabled = true;
+
+</script>
+</body>
+</html>
