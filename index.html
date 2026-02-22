@@ -26,11 +26,13 @@
   .bar{
     display:flex; align-items:center; justify-content:space-between;
     padding:12px 12px; border-bottom:1px solid var(--grid); background:rgba(19,19,26,.95);
+    gap:10px;
   }
   .title{font-weight:700}
   .btn{
     background:var(--accent); color:white; border:none; border-radius:10px;
     padding:10px 12px; font-weight:600; cursor:pointer;
+    white-space:nowrap;
   }
   .btn.secondary{background:var(--panel2); border:1px solid var(--grid); color:var(--text);}
   .btn.danger{background:var(--warn);}
@@ -86,14 +88,14 @@
   .muted{color:var(--muted)}
   .empty{padding:16px; color:var(--muted)}
   dialog{
-    border:none; border-radius:16px; padding:0; width:min(520px, 92vw);
+    border:none; border-radius:16px; padding:0; width:min(560px, 92vw);
     background:var(--panel); color:var(--text);
     box-shadow: 0 20px 60px rgba(0,0,0,.55);
   }
   .dlg-head{padding:14px 14px; border-bottom:1px solid var(--grid); font-weight:800;}
   .dlg-body{padding:14px; display:flex; flex-direction:column; gap:10px;}
   label{font-size:12px; color:var(--muted)}
-  input{
+  input, textarea, select{
     width:100%; padding:12px 12px; border-radius:12px;
     background:var(--panel2); border:1px solid var(--grid); color:var(--text);
     outline:none;
@@ -103,6 +105,41 @@
     padding:12px; border-radius:12px; border:1px solid rgba(255,69,58,.45);
     background:rgba(255,69,58,.18); color:var(--text); font-weight:700;
   }
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .days{display:flex; gap:8px; flex-wrap:wrap; padding:8px; border:1px solid var(--grid); border-radius:12px; background:var(--panel2);}
+  .daychip{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px; border-radius:999px;
+    border:1px solid var(--grid); background:rgba(255,255,255,.04);
+    font-size:12px; color:var(--text); cursor:pointer; user-select:none;
+  }
+  .daychip input{width:auto; margin:0;}
+  .radioRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .radioRow label{color:var(--text); font-size:13px;}
+  .radioRow input{width:auto;}
+  .calendarBtn{
+    padding:10px 12px;
+    border-radius:10px;
+    border:1px solid var(--grid);
+    background:var(--panel2);
+    color:var(--text);
+    font-weight:600;
+    cursor:pointer;
+    display:flex; align-items:center; gap:8px;
+  }
+  .calendarBtn input[type="date"]{
+    padding:0;
+    border:none;
+    background:transparent;
+    color:var(--text);
+    font-weight:700;
+  }
+  .calendarBtn input[type="date"]::-webkit-calendar-picker-indicator{
+    filter: invert(1);
+    opacity: .9;
+    cursor:pointer;
+  }
+
   @media (max-width: 860px){
     .left{width:38%}
     .grid{grid-template-columns: 180px repeat(24, 64px); min-width: calc(180px + 24 * 64px);}
@@ -117,7 +154,7 @@
     z-index:9999;
   }
   .card{
-    width:min(520px, 94vw);
+    width:min(560px, 94vw);
     background:var(--panel);
     border:1px solid var(--grid);
     border-radius:18px;
@@ -190,10 +227,21 @@
         <div class="title" id="rightTitle">Select patient</div>
         <div class="sub" id="rightSub"></div>
       </div>
-      <div style="display:flex; gap:10px; align-items:center;">
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
         <button class="btn secondary" id="prevDayBtn">◀︎ Day</button>
         <button class="btn secondary" id="nextDayBtn">Day ▶︎</button>
+
+        <!-- Calendar between Day ▶︎ and + Med -->
+        <div class="calendarBtn" title="Select date">
+          📅 <input type="date" id="datePicker" />
+        </div>
+
         <button class="btn" id="addMedBtn" disabled>+ Med</button>
+
+        <!-- Print between + Med and Logout -->
+        <button class="btn secondary" id="printBtn" disabled>Print</button>
+
         <button class="btn secondary" id="logoutBtn">Logout</button>
       </div>
     </div>
@@ -202,7 +250,7 @@
       <div class="row">
         <span class="pill" id="todayPill"></span>
         <span class="pill" id="whoPill">Not signed in</span>
-        <span class="pill">Tap a dose block to record “given”</span>
+        <span class="pill">Tap dose to record “given” (tap again to cancel)</span>
         <span class="pill">Warn if outside ±1h</span>
       </div>
 
@@ -236,14 +284,55 @@
       <label>Medication name</label>
       <input id="medName" placeholder="e.g., Metformin" />
     </div>
+
     <div>
       <label>Times (24h, comma-separated)</label>
       <input id="medTimes" placeholder="e.g., 09:00,13:00,21:00" />
     </div>
+
     <div class="muted" style="font-size:12px;">
       Tip: 하루 여러 번이면 시간을 콤마로 추가하세요.
     </div>
+
+    <div style="height:1px; background:var(--grid); margin:6px 0;"></div>
+
+    <div>
+      <label>Schedule 옵션</label>
+      <div class="radioRow">
+        <label><input type="radio" name="schedType" value="weekly" checked /> 요일(월~일)</label>
+        <label><input type="radio" name="schedType" value="interval" /> _일에 한번 (시작일 포함)</label>
+      </div>
+    </div>
+
+    <!-- Weekly -->
+    <div id="weeklyBox">
+      <label>요일 선택 (월~일)</label>
+      <div class="days" id="weekdayChips">
+        <!-- injected -->
+      </div>
+      <div class="muted" style="font-size:12px;">
+        체크된 요일에만 해당 약이 MAR에 나타납니다.
+      </div>
+    </div>
+
+    <!-- Interval -->
+    <div id="intervalBox" style="display:none;">
+      <div class="two-col">
+        <div>
+          <label>_ 일에 한번 (2~6)</label>
+          <input id="intervalN" inputmode="numeric" placeholder="2~6" />
+        </div>
+        <div>
+          <label>시작일 (YY/MM/DD)</label>
+          <input id="intervalStart" type="date" />
+        </div>
+      </div>
+      <div class="muted" style="font-size:12px;">
+        시작일을 1회차로 보고, N일 간격으로 표시됩니다. (예: 2일에 한번 = 매 2일마다)
+      </div>
+    </div>
   </div>
+
   <div class="dlg-actions">
     <button class="btn secondary" id="medCancel">Cancel</button>
     <button class="btn" id="medSave">Save</button>
@@ -259,6 +348,29 @@
   </div>
   <div class="dlg-actions">
     <button class="btn" id="warnClose">Close</button>
+  </div>
+</dialog>
+
+<!-- Initials Dialog -->
+<dialog id="initialsDlg">
+  <div class="dlg-head">Your Initials</div>
+  <div class="dlg-body">
+    <div class="muted" style="font-size:12px; line-height:1.35;">
+      MAR 기록에는 <b>HH:MM + 이니셜</b>이 들어갑니다.<br/>
+      예: <b>09:12 LSH</b> 또는 <b>09:12 LSH2</b>
+    </div>
+    <div>
+      <label>Initials</label>
+      <input id="initialsInput" placeholder="e.g., LSH or LSH2" maxlength="6" />
+    </div>
+    <div class="muted" style="font-size:12px;">
+      * 같은 이니셜이 있으면 숫자를 붙여서 구분하세요(예: LSH2).<br/>
+      * (실사용에서는 Admin이 Nurse별로 정해두는 것을 권장)
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="initialsLater">Later</button>
+    <button class="btn" id="initialsSave">Save</button>
   </div>
 </dialog>
 
@@ -287,7 +399,6 @@ const whoPill = document.getElementById("whoPill");
 
 try{
   app = initializeApp(firebaseConfig);
-  // analytics는 optional (원하면 유지)
   try{ getAnalytics(app); }catch(_e){}
   auth = getAuth(app);
   db = getFirestore(app);
@@ -317,9 +428,26 @@ const loginErr = document.getElementById("loginErr");
 const logoutBtn = document.getElementById("logoutBtn");
 
 function makeEmail(facilityCode, nurseId){
-  // 통일된 규칙: nurseId@facilityCode.local
-  // (.local은 “형식”만 맞으면 됨 — 꼭 local일 필요 없음)
   return `${nurseId}@${facilityCode}.local`.toLowerCase();
+}
+
+let currentEmail = null;
+let currentInitials = null;
+
+function initialsKey(email){
+  return `mini_mar_initials_${(email||"demo").toLowerCase()}`;
+}
+function loadInitials(email){
+  const v = localStorage.getItem(initialsKey(email));
+  return v && v.trim() ? v.trim() : null;
+}
+function saveInitials(email, initials){
+  localStorage.setItem(initialsKey(email), initials.trim().toUpperCase());
+}
+function setWhoPill(){
+  const who = currentEmail ? `Signed in: ${currentEmail}` : "Demo mode (no sync)";
+  const ini = currentInitials ? ` · Initials: ${currentInitials}` : ` · Initials: (unset)`;
+  whoPill.textContent = who + ini;
 }
 
 async function doLogin(){
@@ -337,7 +465,6 @@ async function doLogin(){
 
   try{
     await signInWithEmailAndPassword(auth, email, password);
-    // 성공하면 onAuthStateChanged에서 화면 전환됨
   }catch(e){
     console.error(e);
     loginErr.textContent =
@@ -351,10 +478,12 @@ loginBtn.onclick = doLogin;
 passInput.addEventListener("keydown", (ev)=>{ if(ev.key==="Enter") doLogin(); });
 
 demoBtn.onclick = ()=>{
-  // 로그인 없이 데모로 앱 보기
   loginOverlay.style.display = "none";
   appRoot.style.display = "flex";
-  whoPill.textContent = "Demo mode (no sync)";
+  currentEmail = null;
+  currentInitials = loadInitials("demo") || "DM";
+  setWhoPill();
+  renderAll();
 };
 
 logoutBtn.onclick = async ()=>{
@@ -365,24 +494,32 @@ onAuthStateChanged(auth, (user)=>{
   if(user){
     loginOverlay.style.display = "none";
     appRoot.style.display = "flex";
-    whoPill.textContent = `Signed in: ${user.email}`;
+    currentEmail = user.email || "(unknown)";
+    currentInitials = loadInitials(currentEmail);
+    setWhoPill();
+    if(!currentInitials){
+      openInitialsDialog();
+    }
   }else{
-    // 로그아웃 상태면 로그인 창
     loginOverlay.style.display = "flex";
     appRoot.style.display = "none";
-    whoPill.textContent = "Not signed in";
+    currentEmail = null;
+    currentInitials = null;
+    setWhoPill();
   }
 });
 
 /* ===========================
    Mini MAR (Local storage)
 =========================== */
-const KEY = "mini_mar_v1";
+const KEY = "mini_mar_v2"; // v2: schedule & initials 기록 포함
 function loadState(){
   try{
     const raw = localStorage.getItem(KEY);
     if(!raw) return {patients:{}};
-    return JSON.parse(raw);
+    const s = JSON.parse(raw);
+    if(!s.patients) s.patients = {};
+    return s;
   }catch(e){
     return {patients:{}};
   }
@@ -412,6 +549,48 @@ function dtForDay(dayDate, hhmm){
 function minutesDiff(a,b){
   return Math.abs((a.getTime()-b.getTime())/60000);
 }
+function toISODate(d){ return ymd(d); }
+function parseISODate(s){
+  // "YYYY-MM-DD"
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s||"");
+  if(!m) return null;
+  const [_,yy,mm,dd] = m;
+  return new Date(Number(yy), Number(mm)-1, Number(dd), 0,0,0,0);
+}
+function daysBetween(a,b){
+  // a,b: Date at 00:00
+  return Math.floor((a.getTime()-b.getTime())/(24*60*60*1000));
+}
+
+const WEEKDAYS = [
+  {k:1, label:"월"},
+  {k:2, label:"화"},
+  {k:3, label:"수"},
+  {k:4, label:"목"},
+  {k:5, label:"금"},
+  {k:6, label:"토"},
+  {k:0, label:"일"},
+];
+
+function isMedActiveOnDate(medObj, date){
+  // medObj.schedule:
+  // { type:'weekly', days:[0..6] } OR { type:'interval', every:2..6, start:'YYYY-MM-DD' }
+  const sch = medObj.schedule || {type:"weekly", days:[0,1,2,3,4,5,6]};
+  if(sch.type === "weekly"){
+    const day = date.getDay();
+    return Array.isArray(sch.days) && sch.days.includes(day);
+  }
+  if(sch.type === "interval"){
+    const every = Number(sch.every);
+    const start = parseISODate(sch.start);
+    if(!every || !start) return false;
+    const d0 = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0,0,0,0);
+    const diff = daysBetween(d0, start);
+    if(diff < 0) return false;
+    return diff % every === 0;
+  }
+  return true;
+}
 
 let state = loadState();
 let selectedPatient = null;
@@ -424,6 +603,8 @@ const rightSubEl = document.getElementById("rightSub");
 const gridWrapEl = document.getElementById("gridWrap");
 const todayPillEl = document.getElementById("todayPill");
 const addMedBtn = document.getElementById("addMedBtn");
+const printBtn = document.getElementById("printBtn");
+const datePicker = document.getElementById("datePicker");
 
 const patientDlg = document.getElementById("patientDlg");
 const patientName = document.getElementById("patientName");
@@ -435,13 +616,29 @@ const medName = document.getElementById("medName");
 const medTimes = document.getElementById("medTimes");
 const medSave = document.getElementById("medSave");
 const medCancel = document.getElementById("medCancel");
+const weeklyBox = document.getElementById("weeklyBox");
+const intervalBox = document.getElementById("intervalBox");
+const weekdayChips = document.getElementById("weekdayChips");
+const intervalN = document.getElementById("intervalN");
+const intervalStart = document.getElementById("intervalStart");
 
 const warnDlg = document.getElementById("warnDlg");
 const warnClose = document.getElementById("warnClose");
 const warnDetail = document.getElementById("warnDetail");
 
+const initialsDlg = document.getElementById("initialsDlg");
+const initialsInput = document.getElementById("initialsInput");
+const initialsSaveBtn = document.getElementById("initialsSave");
+const initialsLaterBtn = document.getElementById("initialsLater");
+
+function ensurePatient(name){
+  if(!state.patients[name]) state.patients[name] = { meds:{} };
+  if(!state.patients[name].meds) state.patients[name].meds = {};
+  return state.patients[name];
+}
+
 function renderPatients(){
-  const names = Object.keys(state.patients);
+  const names = Object.keys(state.patients).sort((a,b)=>a.localeCompare(b));
   patientListEl.innerHTML = "";
   if(names.length===0){
     patientListEl.innerHTML = `<div class="empty">No patients. Tap +</div>`;
@@ -459,16 +656,21 @@ function renderPatients(){
 
 function renderHeader(){
   todayPillEl.textContent = "Day: " + ymd(currentDay);
+  datePicker.value = ymd(currentDay);
+
   if(!selectedPatient){
     rightTitleEl.textContent = "Select patient";
     rightSubEl.textContent = "";
     addMedBtn.disabled = true;
+    printBtn.disabled = true;
   }else{
     rightTitleEl.textContent = selectedPatient;
     const medsCount = Object.keys(state.patients[selectedPatient].meds||{}).length;
     rightSubEl.textContent = `${medsCount} meds · Tap dose to record`;
     addMedBtn.disabled = false;
+    printBtn.disabled = false;
   }
+  setWhoPill();
 }
 
 function renderGrid(){
@@ -476,12 +678,15 @@ function renderGrid(){
     gridWrapEl.innerHTML = `<div class="empty">Select a patient to view MAR.</div>`;
     return;
   }
-  const patient = state.patients[selectedPatient];
+  const patient = ensurePatient(selectedPatient);
   const meds = patient.meds || {};
   const medNames = Object.keys(meds);
 
-  if(medNames.length===0){
-    gridWrapEl.innerHTML = `<div class="empty">No meds. Tap “+ Med”.</div>`;
+  // 이 날짜에 스케줄되는 약만 보여줌(요일/간격)
+  const activeMeds = medNames.filter(m => isMedActiveOnDate(meds[m], currentDay));
+
+  if(activeMeds.length===0){
+    gridWrapEl.innerHTML = `<div class="empty">No scheduled meds for this day. (Check schedule options)</div>`;
     return;
   }
 
@@ -502,12 +707,23 @@ function renderGrid(){
 
   const dayKey = ymd(currentDay);
 
-  for(const med of medNames){
+  for(const med of activeMeds){
     const lc = document.createElement("div");
     lc.className = "cell leftcol";
+
+    const sch = meds[med].schedule || {type:"weekly", days:[0,1,2,3,4,5,6]};
+    let schText = "";
+    if(sch.type === "weekly"){
+      const labels = WEEKDAYS.filter(w=>sch.days?.includes(w.k)).map(w=>w.label);
+      schText = labels.length ? `요일: ${labels.join("")}` : "요일: (none)";
+    }else{
+      schText = `${sch.every}일마다 · 시작 ${sch.start || "-"}`;
+    }
+
     lc.innerHTML = `<div style="display:flex; flex-direction:column; gap:4px;">
       <div>${med}</div>
       <div class="muted" style="font-size:11px;">${(meds[med].times||[]).join(", ")}</div>
+      <div class="muted" style="font-size:11px;">${schText}</div>
     </div>`;
     grid.appendChild(lc);
 
@@ -538,10 +754,10 @@ function renderGrid(){
           if(rec && rec.status==="ok") block.classList.add("done");
           if(rec && rec.status==="late") block.classList.add("late");
 
-          const givenText = rec ? ("Given: "+rec.given) : "Tap to Give";
+          const givenText = rec ? (`Given: ${rec.given} ${rec.initials || ""}`.trim()) : "Tap to Give";
           block.innerHTML = `<div><b>${t}</b></div><div class="small">${givenText}</div>`;
 
-          block.onclick = ()=> giveDose(med, t);
+          block.onclick = ()=> toggleDose(med, t);
           c.appendChild(block);
         }
       }
@@ -567,21 +783,59 @@ function addPatient(){
 function savePatientAction(){
   const name = patientName.value.trim();
   if(!name) return;
-  if(!state.patients[name]){
-    state.patients[name] = { meds:{} };
-    saveState();
-  }
+  ensurePatient(name);
+  saveState();
   selectedPatient = name;
   patientDlg.close();
   renderAll();
+}
+
+function buildWeekdayChips(){
+  weekdayChips.innerHTML = "";
+  for(const w of WEEKDAYS){
+    const chip = document.createElement("label");
+    chip.className = "daychip";
+    chip.innerHTML = `<input type="checkbox" data-day="${w.k}" checked /> ${w.label}`;
+    weekdayChips.appendChild(chip);
+  }
+}
+
+function getSelectedSchedType(){
+  const r = document.querySelector('input[name="schedType"]:checked');
+  return r ? r.value : "weekly";
+}
+
+function updateScheduleUI(){
+  const t = getSelectedSchedType();
+  weeklyBox.style.display = (t==="weekly") ? "" : "none";
+  intervalBox.style.display = (t==="interval") ? "" : "none";
 }
 
 function addMed(){
   if(!selectedPatient) return;
   medName.value = "";
   medTimes.value = "";
+  intervalN.value = "";
+  intervalStart.value = ymd(currentDay);
+
+  // default: weekly all checked
+  buildWeekdayChips();
+  document.querySelector('input[name="schedType"][value="weekly"]').checked = true;
+  updateScheduleUI();
+
   medDlg.showModal();
   medName.focus();
+}
+
+function readWeeklyDays(){
+  const checks = [...weekdayChips.querySelectorAll('input[type="checkbox"]')];
+  return checks.filter(c=>c.checked).map(c=>Number(c.dataset.day));
+}
+
+function readInterval(){
+  const every = Number((intervalN.value||"").trim());
+  const start = intervalStart.value; // YYYY-MM-DD
+  return { every, start };
 }
 
 function saveMedAction(){
@@ -589,44 +843,74 @@ function saveMedAction(){
   const times = parseTimesCSV(medTimes.value.trim());
   if(!m || times.length===0) return;
 
-  const p = state.patients[selectedPatient];
+  const p = ensurePatient(selectedPatient);
   p.meds = p.meds || {};
-  p.meds[m] = p.meds[m] || { times:[], history:{} };
+  p.meds[m] = p.meds[m] || { times:[], history:{}, schedule:null };
   p.meds[m].times = times;
   p.meds[m].history = p.meds[m].history || {};
+
+  const schedType = getSelectedSchedType();
+  if(schedType === "weekly"){
+    const days = readWeeklyDays();
+    // 최소 1개는 체크되어야 의미가 있음
+    if(days.length === 0) return;
+    p.meds[m].schedule = { type:"weekly", days };
+  }else{
+    const { every, start } = readInterval();
+    if(!(every>=2 && every<=6)) return;
+    if(!start) return;
+    p.meds[m].schedule = { type:"interval", every, start };
+  }
 
   saveState();
   medDlg.close();
   renderAll();
 }
 
-function giveDose(med, schedTime){
-  const p = state.patients[selectedPatient];
+function toggleDose(med, schedTime){
+  const p = ensurePatient(selectedPatient);
   const md = p.meds[med];
   const dayKey = ymd(currentDay);
   md.history = md.history || {};
   md.history[dayKey] = md.history[dayKey] || [];
 
+  const arr = md.history[dayKey];
+  const idx = arr.findIndex(x => x.sched === schedTime);
+
+  // 이미 given 기록이 있으면 → 취소(삭제)
+  if(idx >= 0){
+    arr.splice(idx, 1);
+    saveState();
+    renderAll();
+    return;
+  }
+
+  // 신규 given 기록
   const now = new Date();
   const sched = dtForDay(currentDay, schedTime);
   const diff = minutesDiff(now, sched);
   const status = diff <= 60 ? "ok" : "late";
 
+  // initials 없으면 한 번 더 요청(데모 포함)
+  if(!currentInitials){
+    openInitialsDialog();
+    // initials 저장 후 다시 누르게 하는게 UX가 깔끔함
+    return;
+  }
+
   const rec = {
     sched: schedTime,
     given: pad2(now.getHours()) + ":" + pad2(now.getMinutes()),
-    status
+    status,
+    initials: currentInitials
   };
 
-  const arr = md.history[dayKey];
-  const idx = arr.findIndex(x => x.sched === schedTime);
-  if(idx >= 0) arr[idx] = rec; else arr.push(rec);
-
+  arr.push(rec);
   saveState();
   renderAll();
 
   if(status === "late"){
-    warnDetail.textContent = `Scheduled ${schedTime} · Given ${rec.given} · Diff ${Math.round(diff)} min`;
+    warnDetail.textContent = `Scheduled ${schedTime} · Given ${rec.given} ${rec.initials} · Diff ${Math.round(diff)} min`;
     warnDlg.showModal();
   }
 }
@@ -637,6 +921,192 @@ function shiftDay(delta){
   renderAll();
 }
 
+function setDayFromPicker(){
+  const v = datePicker.value;
+  const d = parseISODate(v);
+  if(!d) return;
+  currentDay = d;
+  renderAll();
+}
+
+/* ===========================
+   Print (Monthly MAR)
+=========================== */
+function daysInMonth(date){
+  return new Date(date.getFullYear(), date.getMonth()+1, 0).getDate();
+}
+function monthKey(date){
+  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}`;
+}
+function isSameMonth(date, y, m){
+  return date.getFullYear()===y && date.getMonth()===m;
+}
+function fmtMonthTitle(date){
+  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}`;
+}
+
+function buildMonthlyPrintHTML(patientName, monthDate){
+  const patient = ensurePatient(patientName);
+  const meds = patient.meds || {};
+  const medNames = Object.keys(meds).sort((a,b)=>a.localeCompare(b));
+
+  const y = monthDate.getFullYear();
+  const m = monthDate.getMonth();
+  const dim = daysInMonth(monthDate);
+
+  // Row definition: each (med, time) as a row
+  const rows = [];
+  for(const med of medNames){
+    const times = meds[med].times || [];
+    for(const t of times){
+      rows.push({ med, time:t });
+    }
+  }
+
+  // Build lookup: for each day, med, time -> record
+  const lookup = new Map(); // key: `${day}-${med}-${time}` => rec
+  for(let day=1; day<=dim; day++){
+    const d = new Date(y, m, day, 0,0,0,0);
+    const dayKey = ymd(d);
+    for(const med of medNames){
+      // schedule applies?
+      if(!isMedActiveOnDate(meds[med], d)) continue;
+
+      const hist = meds[med].history?.[dayKey] || [];
+      const bySched = {};
+      for(const r of hist){ if(r.sched) bySched[r.sched]=r; }
+      for(const t of meds[med].times || []){
+        const rec = bySched[t];
+        if(rec){
+          lookup.set(`${day}||${med}||${t}`, rec);
+        }
+      }
+    }
+  }
+
+  const style = `
+    <style>
+      @page { size: landscape; margin: 10mm; }
+      body{ font-family: Arial, sans-serif; color:#000; }
+      .hdr{
+        display:flex; justify-content:space-between; align-items:flex-end;
+        border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px;
+      }
+      .hdr .t1{ font-weight:900; font-size:18px; }
+      .hdr .t2{ font-weight:700; font-size:12px; }
+      .meta{ display:flex; gap:18px; font-size:12px; margin:6px 0 10px; }
+      table{ border-collapse:collapse; width:100%; table-layout:fixed; }
+      th, td{ border:1px solid #000; font-size:10px; padding:2px; text-align:center; vertical-align:middle; }
+      th{ background:#f3f3f3; font-weight:800; }
+      .col-med{ width: 230px; text-align:left; padding-left:6px; font-weight:800; }
+      .col-time{ width: 60px; font-weight:800; }
+      .cell{ height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .foot{ margin-top:10px; font-size:10px; display:flex; justify-content:space-between; }
+      .small{ font-size:10px; font-weight:700; }
+      .subtle{ color:#333; }
+    </style>
+  `;
+
+  let thead = `<tr>
+    <th class="col-med">MEDICATIONS</th>
+    <th class="col-time">HOUR</th>
+    ${Array.from({length:dim}, (_,i)=>`<th>${i+1}</th>`).join("")}
+  </tr>`;
+
+  let tbody = rows.map(r=>{
+    const cells = [];
+    for(let day=1; day<=dim; day++){
+      const rec = lookup.get(`${day}||${r.med}||${r.time}`);
+      // rec에 given + initials
+      const txt = rec ? `${rec.given} ${rec.initials||""}`.trim() : "";
+      cells.push(`<td class="cell">${txt}</td>`);
+    }
+    return `<tr>
+      <td class="col-med">${escapeHtml(r.med)}</td>
+      <td class="col-time">${escapeHtml(r.time)}</td>
+      ${cells.join("")}
+    </tr>`;
+  }).join("");
+
+  const html = `
+    <!doctype html><html><head><meta charset="utf-8" />
+    <title>MAR Print</title>${style}</head>
+    <body>
+      <div class="hdr">
+        <div class="t1">MEDICATION ADMINISTRATION RECORD</div>
+        <div class="t2">Month: ${fmtMonthTitle(monthDate)}</div>
+      </div>
+      <div class="meta">
+        <div><span class="small">Patient:</span> ${escapeHtml(patientName)}</div>
+        <div><span class="small">Facility:</span> ${escapeHtml((facilityInput.value||"").trim() || "-")}</div>
+        <div><span class="small">Printed:</span> ${escapeHtml(new Date().toLocaleString())}</div>
+      </div>
+
+      <table>
+        <thead>${thead}</thead>
+        <tbody>${tbody || `<tr><td colspan="${dim+2}" class="subtle">No meds</td></tr>`}</tbody>
+      </table>
+
+      <div class="foot">
+        <div class="subtle">Cell content: HH:MM + initials</div>
+        <div class="subtle">Mini MAR v1 (local)</div>
+      </div>
+
+      <script>
+        window.onload = () => { window.print(); };
+      </script>
+    </body></html>
+  `;
+  return html;
+}
+
+function escapeHtml(s){
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function doPrint(){
+  if(!selectedPatient) return;
+  const w = window.open("", "_blank");
+  if(!w) return;
+  const html = buildMonthlyPrintHTML(selectedPatient, currentDay);
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+/* ===========================
+   Initials dialog
+=========================== */
+function openInitialsDialog(){
+  initialsInput.value = currentInitials || "";
+  initialsDlg.showModal();
+  initialsInput.focus();
+}
+initialsSaveBtn.onclick = ()=>{
+  const v = (initialsInput.value||"").trim().toUpperCase();
+  if(!v) return;
+  // 간단 검증: A-Z0-9 2~6
+  if(!/^[A-Z0-9]{2,6}$/.test(v)) return;
+  const keyEmail = currentEmail || "demo";
+  saveInitials(keyEmail, v);
+  currentInitials = v;
+  initialsDlg.close();
+  setWhoPill();
+  renderAll();
+};
+initialsLaterBtn.onclick = ()=>{
+  initialsDlg.close();
+  setWhoPill();
+};
+
+/* ===========================
+   Wiring
+=========================== */
 document.getElementById("addPatientBtn").onclick = addPatient;
 patientSave.onclick = savePatientAction;
 patientCancel.onclick = ()=>patientDlg.close();
@@ -648,7 +1118,19 @@ medCancel.onclick = ()=>medDlg.close();
 document.getElementById("prevDayBtn").onclick = ()=>shiftDay(-1);
 document.getElementById("nextDayBtn").onclick = ()=>shiftDay(1);
 
+datePicker.addEventListener("change", setDayFromPicker);
+
 warnClose.onclick = ()=>warnDlg.close();
+
+printBtn.onclick = doPrint;
+
+document.querySelectorAll('input[name="schedType"]').forEach(r=>{
+  r.addEventListener("change", updateScheduleUI);
+});
+
+whoPill.style.cursor = "pointer";
+whoPill.title = "Click to set initials";
+whoPill.onclick = ()=> openInitialsDialog();
 
 function renderAll(){
   renderPatients();
