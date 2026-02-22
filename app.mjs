@@ -672,3 +672,49 @@ onAuthStateChanged(auth, (user)=>{
 
 /* initial render */
 renderAll();
+
+/* ===========================
+   SYNC BRIDGE (minimal, additive)
+   - Keep app logic intact, just expose hooks for sync.mjs
+=========================== */
+
+// Expose Firebase handles to sync layer
+window.__MAR_FB__ = { auth, db };
+
+// Local change listeners (sync subscribes here)
+const __marLocalChangeListeners = new Set();
+function __emitLocalChange(reason){
+  __marLocalChangeListeners.forEach(fn=>{
+    try{ fn({ reason: reason || "unknown" }); }catch(_e){}
+  });
+}
+
+// Wrap saveState() so any local mutation notifies sync
+const __origSaveState = saveState;
+saveState = function(){
+  __origSaveState();
+  __emitLocalChange("saveState");
+};
+
+// Facility parsing helper (from email like n123@AHLTC001.local)
+function __parseFacilityFromEmail(email){
+  const m = /@([^.]+)\.local$/i.exec(email || "");
+  return m ? m[1].toUpperCase() : null;
+}
+
+// Expose a small app API (read/write state + subscribe)
+window.MAR_APP = {
+  getState: ()=> state,
+  setState: (next)=>{ state = next; renderAll(); },
+  render: ()=> renderAll(),
+  onLocalChange: (fn)=>{ __marLocalChangeListeners.add(fn); return ()=>__marLocalChangeListeners.delete(fn); },
+  getFacilityCode: ()=>{
+    // Prefer auth email derived facility
+    if(auth && auth.currentUser && auth.currentUser.email){
+      return __parseFacilityFromEmail(auth.currentUser.email);
+    }
+    // Fallback: facility input value (may persist)
+    const el = document.getElementById("facilityInput");
+    return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
+  },
+};
