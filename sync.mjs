@@ -12,13 +12,19 @@ import {
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 async function waitForGlobals(){
-  for(let i=0;i<200;i++){
-    if(window.__MAR_FB__ && window.__MAR_FB__.auth && window.__MAR_FB__.db && window.MAR_APP){
-      return;
+  let tries = 0;
+  while(true){
+    const ok = window.__MAR_FB__ && window.__MAR_FB__.auth && window.__MAR_FB__.db && window.MAR_APP;
+    if(ok) return;
+
+    tries++;
+    if(tries % 20 === 0){
+      console.warn("SYNC: waiting for hooks... (MAR_APP / __MAR_FB__)",
+        "MAR_APP:", !!window.MAR_APP,
+        "__MAR_FB__:", !!window.__MAR_FB__);
     }
-    await sleep(50);
+    await sleep(100);
   }
-  throw new Error("sync.mjs: window hooks not found (MAR_APP / __MAR_FB__)");
 }
 
 function patientIdFromName(name){
@@ -251,3 +257,4 @@ function setStatusHint(msg){
   }, 400);
 
 })();
+
