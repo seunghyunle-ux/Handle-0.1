@@ -374,6 +374,18 @@
   </div>
 </dialog>
 
+<script>
+  window.addEventListener("error", (e) => {
+    const el = document.getElementById("fbStatus");
+    if (el) el.textContent = "Firebase error: " + (e.message || "unknown");
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const el = document.getElementById("fbStatus");
+    const msg = (e.reason && (e.reason.message || e.reason)) || "promise rejection";
+    if (el) el.textContent = "Firebase rejection: " + msg;
+  });
+</script>
+  
 <script type="module">
 /* ===========================
    Firebase (YOUR CDN) + Auth/Firestore
