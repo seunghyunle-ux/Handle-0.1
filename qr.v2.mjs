@@ -162,7 +162,7 @@ function popupHtmlShell(){
 }
 
 function openPopup(){
-  const w = window.open("", "_blank", "noopener,noreferrer,width=1100,height=780");
+  const w = window.open("", "_blank", "noopener,width=1100,height=780");
   if(!w) return null;
   w.document.open();
   w.document.write(popupHtmlShell());
