@@ -1,8 +1,9 @@
-/* sync.mjs
+/* sync.v2.mjs
    Firestore Sync Layer for Mini MAR (facility isolated)
-   - Works with your existing Firestore Rules (sameFacility + role)
-   - No deletes (since delete is admin-only)
-   - Patient doc stores full local patient object under { data: ... }
+   FIXES:
+   - Prevent "deleted patient comes back" via tombstone (no Firestore delete needed)
+   - Prevent remote snapshot overwriting newer local changes via stateRev/stateUpdatedAt guard
+   - Keep room/mrn because we always push full patient data as-is
 */
 
 import {
@@ -36,6 +37,8 @@ function deepClone(obj){
 function normalizeState(s){
   if(!s || typeof s !== "object") return { patients:{} };
   if(!s.patients || typeof s.patients !== "object") s.patients = {};
+  if(s.__rev === undefined) s.__rev = 0;
+  if(s.__updatedAt === undefined) s.__updatedAt = 0;
   return s;
 }
 function debounce(fn, ms){
@@ -49,17 +52,13 @@ function safeText(s){
   return (s === null || s === undefined) ? "" : String(s);
 }
 function setStatusHint(msg){
-  // Optional: show tiny hint in whoPill (won't break if missing)
   const el = document.getElementById("whoPill");
   if(!el) return;
-  // Keep it short; preserve main text as much as possible
   if(msg){
     el.dataset.syncHint = msg;
-    // Don’t permanently overwrite app’s own whoPill, just append
     if(!el.textContent.includes("SYNC:")){
       el.textContent = el.textContent + " · SYNC:" + msg;
     }else{
-      // replace last SYNC part
       el.textContent = el.textContent.replace(/ · SYNC:.*$/," · SYNC:"+msg);
     }
   }
@@ -82,8 +81,19 @@ function setStatusHint(msg){
   // Track last server state hash-ish to reduce redundant writes
   let lastPushedJson = "";
 
+  // Track current remote patient doc IDs (so we can tombstone missing ones)
+  let lastRemoteIds = new Set();
+
   function patientsColRef(){
     return collection(db, "facilities", facilityCode, "patients");
+  }
+
+  function localMeta(){
+    const s = normalizeState(deepClone(APP.getState()));
+    return {
+      stateRev: Number(s.__rev) || 0,
+      stateUpdatedAt: Number(s.__updatedAt) || 0
+    };
   }
 
   async function pushAllPatients(){
@@ -92,18 +102,49 @@ function setStatusHint(msg){
     const names = Object.keys(patients);
 
     // push only if changed (coarse)
-    const json = JSON.stringify(patients);
+    const json = JSON.stringify({ patients, __rev: s.__rev, __updatedAt: s.__updatedAt });
     if(json === lastPushedJson) return;
     lastPushedJson = json;
 
+    const meta = localMeta();
+
+    // 1) Upsert all existing local patients
     for(const name of names){
       const pid = patientIdFromName(name);
       const ref = doc(db, "facilities", facilityCode, "patients", pid);
 
       await setDoc(ref, {
         name,
-        data: patients[name],
-        schemaVersion: 1,
+        deleted: false,
+        data: patients[name],             // includes meds + room + mrn
+        schemaVersion: 2,
+        stateRev: meta.stateRev,
+        stateUpdatedAt: meta.stateUpdatedAt,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser.uid,
+        updatedByEmail: auth.currentUser.email || null
+      }, { merge: true });
+    }
+
+    // 2) Tombstone patients that exist remotely but not locally (prevents "comes back")
+    //    We DO NOT Firestore-delete (rules may block). We mark deleted:true.
+    const localIds = new Set(names.map(n => patientIdFromName(n)));
+    const toTombstone = [];
+    lastRemoteIds.forEach(pid=>{
+      if(!localIds.has(pid)) toTombstone.push(pid);
+    });
+
+    for(const pid of toTombstone){
+      const ref = doc(db, "facilities", facilityCode, "patients", pid);
+      await setDoc(ref, {
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        deletedBy: auth.currentUser.uid,
+        deletedByEmail: auth.currentUser.email || null,
+        // also stamp meta so other clients see this as newest
+        schemaVersion: 2,
+        stateRev: meta.stateRev,
+        stateUpdatedAt: meta.stateUpdatedAt,
         updatedAt: serverTimestamp(),
         updatedBy: auth.currentUser.uid,
         updatedByEmail: auth.currentUser.email || null
@@ -112,13 +153,46 @@ function setStatusHint(msg){
   }
 
   function applyRemoteSnapshot(snap){
+    // Guard 1) If we just wrote locally, don't immediately overwrite with remote
+    const lastLocal = APP.getLastLocalWriteAt ? (APP.getLastLocalWriteAt() || 0) : 0;
+    if(Date.now() - lastLocal < 1200){
+      // defer a bit; remote will fire again soon anyway
+      return;
+    }
+
+    // Build next state from remote (ignore deleted tombstones)
     const next = { patients:{} };
 
+    // Track remote ids + find "max" meta to compare freshness
+    const remoteIds = new Set();
+    let remoteMaxRev = 0;
+    let remoteMaxUpdatedAt = 0;
+
     snap.forEach(d=>{
+      remoteIds.add(d.id);
+
       const v = d.data() || {};
+      if(v.deleted === true) return; // ✅ ignore tombstoned patient docs
+
       const name = v.name || decodeURIComponent(d.id);
       next.patients[name] = v.data || { meds:{} };
+
+      const rrev = Number(v.stateRev) || 0;
+      const rupd = Number(v.stateUpdatedAt) || 0;
+      if(rrev > remoteMaxRev) remoteMaxRev = rrev;
+      if(rupd > remoteMaxUpdatedAt) remoteMaxUpdatedAt = rupd;
     });
+
+    lastRemoteIds = remoteIds;
+
+    // Guard 2) Don't apply if remote is not newer than local
+    const local = normalizeState(deepClone(APP.getState()));
+    const localRev = Number(local.__rev) || 0;
+    const localUpd = Number(local.__updatedAt) || 0;
+
+    // Remote snapshot is older or same -> ignore (prevents delete/room/mrn revert)
+    if(remoteMaxRev < localRev) return;
+    if(remoteMaxRev === localRev && remoteMaxUpdatedAt <= localUpd) return;
 
     applyingRemote = true;
     try{
@@ -143,12 +217,11 @@ function setStatusHint(msg){
     }catch(e){
       console.error("SYNC push error:", e);
       setStatusHint("ERR");
-      // Keep lastPushedJson so we will retry on next change; optional:
       lastPushedJson = "";
     }
   }, 600);
 
-  // Subscribe to local changes (saveState wrapper triggers this)
+  // Subscribe to local changes
   APP.onLocalChange(()=>{
     schedulePush();
   });
@@ -156,22 +229,6 @@ function setStatusHint(msg){
   // Start/stop facility subscription on auth change (polling)
   let lastUid = null;
   let unsubPatients = null;
-
-  async function bootstrapIfRemoteEmpty(){
-    // if remote is empty AND local has data -> upload once
-    // wait a moment for first snapshot
-    for(let i=0;i<30;i++){
-      if(remoteReady) break;
-      await sleep(100);
-    }
-    if(!remoteReady) return;
-
-    // If remote has 0 docs, upload local
-    // We can infer emptiness because current local state after snapshot will have 0 patients
-    // BUT we want to check "before snapshot overwrote local" in some cases.
-    // For simplicity: if snapshot gave 0 and local has some (rare after overwrite), user can re-add.
-    // Better approach: keep preSnapshot local backup. We'll do that.
-  }
 
   let preSnapshotLocalPatientsJson = null;
 
@@ -182,7 +239,6 @@ function setStatusHint(msg){
     if(uid === lastUid) return;
     lastUid = uid;
 
-    // stop previous
     if(unsubPatients){
       try{ unsubPatients(); }catch(_e){}
       unsubPatients = null;
@@ -190,6 +246,7 @@ function setStatusHint(msg){
     remoteReady = false;
     applyingRemote = false;
     lastPushedJson = "";
+    lastRemoteIds = new Set();
 
     if(!u){
       setStatusHint("");
@@ -225,10 +282,9 @@ function setStatusHint(msg){
 
         // Bootstrap: remote empty + local had patients before snapshot => push them up once
         if(isEmpty && preSnapshotLocalPatientsJson && preSnapshotLocalPatientsJson !== "{}"){
-          // restore local patients into state, then push
           try{
             applyingRemote = true;
-            const restored = { patients: JSON.parse(preSnapshotLocalPatientsJson) };
+            const restored = { patients: JSON.parse(preSnapshotLocalPatientsJson), __rev: 1, __updatedAt: Date.now() };
             APP.setState(normalizeState(restored));
           } finally {
             applyingRemote = false;
@@ -257,4 +313,3 @@ function setStatusHint(msg){
   }, 400);
 
 })();
-
