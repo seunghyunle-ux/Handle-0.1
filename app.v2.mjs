@@ -243,8 +243,10 @@ currentDay.setHours(0,0,0,0);
    Render
 =========================== */
 function ensurePatient(name){
-  if(!state.patients[name]) state.patients[name] = { meds:{} };
+  if(!state.patients[name]) state.patients[name] = { meds:{}, room:"", mrn:"" };
   if(!state.patients[name].meds) state.patients[name].meds = {};
+  if(state.patients[name].room === undefined) state.patients[name].room = "";
+  if(state.patients[name].mrn === undefined) state.patients[name].mrn = "";
   return state.patients[name];
 }
 
@@ -862,4 +864,5 @@ window.MAR_APP = {
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
+
 
