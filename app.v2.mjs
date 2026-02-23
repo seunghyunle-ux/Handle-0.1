@@ -364,7 +364,7 @@ function renderHeader(){
 
   if(!selectedPatient){
     rightTitleEl.textContent = "Select patient";
-    rightSubEl.textContent = "";S
+    rightSubEl.textContent = "";
     addMedBtn.disabled = true;
     printBtn.disabled = true;
   }else{
