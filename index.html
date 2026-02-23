@@ -162,12 +162,25 @@
 <!-- Add Patient Dialog -->
 <dialog id="patientDlg">
   <div class="dlg-head">Add Patient</div>
+
   <div class="dlg-body">
     <div>
       <label>Patient name</label>
       <input id="patientName" placeholder="e.g., Kim" />
     </div>
+
+    <div>
+      <label>Room</label>
+      <input id="patientRoom" placeholder="e.g., 203A" />
+    </div>
+
+    <div>
+      <label>MRN</label>
+      <input id="patientMRN" placeholder="e.g., 12345678" />
+    </div>
+
   </div>
+
   <div class="dlg-actions">
     <button class="btn secondary" id="patientCancel">Cancel</button>
     <button class="btn" id="patientSave">Save</button>
