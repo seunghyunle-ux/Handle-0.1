@@ -941,6 +941,7 @@ async function initScanUI(){
   }
 
   async function handleDecoded(raw, source){
+    alert("RAW QR:\n" + raw);
     const payload = parsePayload(raw);
     if(!payload){
       setStatus(scanStatus, "QR 내용을 읽을 수 없습니다. (JSON 아님)");
