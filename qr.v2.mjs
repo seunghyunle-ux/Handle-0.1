@@ -162,7 +162,10 @@ function popupHtmlShell(){
 }
 
 function openPopup(){
-  const w = window.open("", "_blank", "noopener,noreferrer,width=1100,height=780");
+  const url = new URL("./qr.html", location.href).toString();
+  const w = window.open(url, "_blank", "width=1100,height=780");
+  return w;
+}
   if(!w) return null;
   w.document.open();
   w.document.write(popupHtmlShell());
@@ -527,3 +530,4 @@ async function getUserRole(auth, db){
   });
 
 })();
+
