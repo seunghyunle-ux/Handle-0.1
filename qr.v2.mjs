@@ -477,6 +477,7 @@ async function getUserRole(auth, db){
 
       // Collect checked meds grouped by time
       const checked = [...leftBody.querySelectorAll('input[type="checkbox"][data-time]:checked')];
+      alert("checked count = " + checked.length);
       if(checked.length === 0){
         errEl.textContent = "왼쪽에서 약을 체크하세요.";
         return;
