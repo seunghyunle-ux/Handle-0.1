@@ -614,19 +614,80 @@ async function ensureHtml5Qrcode(){
 
 function parsePayload(raw){
   if(!raw) return null;
-  const t = String(raw).trim();
-  // If it's JSON, parse. If not JSON, ignore for now.
+
+  // normalize to string
+  let t = String(raw).trim();
+t = t.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+if(t.startsWith("{") && t.includes('\\"')) {
+  t = t.replace(/\\+"/g, '"').replace(/\\\\/g, "\\");
+}
+
+  // 1) If it's a URL, try to extract payload/data/json param
   try{
-    const o = JSON.parse(t);
+    if(/^https?:\/\//i.test(t)){
+      const u = new URL(t);
+      t = u.searchParams.get("payload")
+       || u.searchParams.get("data")
+       || u.searchParams.get("json")
+       || u.hash?.slice(1)
+       || t;
+      t = String(t).trim();
+    }
+  }catch(_e){ /* ignore */ }
+
+  // 2) Try URI decode (handles %7B...%7D)
+  try{
+    const dec = decodeURIComponent(t);
+    if(dec && dec !== t) t = dec.trim();
+  }catch(_e){ /* ignore */ }
+
+  // 3) If wrapped in quotes ( "\"{...}\"" ), unwrap by parsing once
+  //    and if result is string, parse again later
+  const tryParse = (s) => {
+    try { return JSON.parse(s); } catch { return null; }
+  };
+
+  // 4) Base64 support: b64:xxxx
+  if(/^b64:/i.test(t)){
+    try{
+      const b = t.slice(4).trim();
+      t = atob(b).trim();
+    }catch(_e){ /* ignore */ }
+  }
+
+  // 5) If contains a JSON object somewhere inside, extract {...}
+  //    (e.g., "QR: {...}" )
+  if(!t.startsWith("{")){
+    const i = t.indexOf("{");
+    const j = t.lastIndexOf("}");
+    if(i >= 0 && j > i) t = t.slice(i, j+1).trim();
+  }
+
+  // 6) Parse JSON (1~2 passes)
+  t = t.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+if(t.startsWith("{") && t.includes('\\"')) {
+  t = t.replace(/\\+"/g, '"').replace(/\\\\/g, "\\");
+}
+   
+  let o = tryParse(t);
+  if(typeof o === "string") o = tryParse(o);
+
+  if(o && typeof o === "object"){
     // infer type if missing
     if(!o.type){
       if(o.patient && (o.meds || o.time)) o.type = "batch";
       else if(o.patient) o.type = "patient";
     }
     return o;
-  }catch(_e){
-    return null;
   }
+
+  // 7) Fallback: plain MRN (digits) as patient
+  const mrn = String(raw).trim();
+  if(/^\d{4,}$/.test(mrn)){
+    return { type:"patient", patient:{ name:"", room:"", mrn } };
+  }
+
+  return null;
 }
 
 function patientKey(p){
