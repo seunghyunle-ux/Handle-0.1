@@ -63,7 +63,7 @@ function buildPayload({ facilityCode, patientName, patientRoom, patientMRN, time
     time: time || null,
     meds: meds || []
   };
-  return JSON.stringify(payload);
+  return `${location.origin}${location.pathname}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
 // Minimal QR encoder (uses public CDN library if available)
