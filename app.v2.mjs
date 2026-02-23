@@ -134,6 +134,8 @@ const datePicker = document.getElementById("datePicker");
 
 const patientDlg = document.getElementById("patientDlg");
 const patientName = document.getElementById("patientName");
+const patientRoom = document.getElementById("patientRoom");
+const patientMRN = document.getElementById("patientMRN");
 const patientSave = document.getElementById("patientSave");
 const patientCancel = document.getElementById("patientCancel");
 
@@ -516,13 +518,22 @@ whoPill.onclick = ()=> openInitialsDialog();
 
 function addPatient(){
   patientName.value = "";
+  patientRoom.value = "";
+  patientMRN.value = "";
   patientDlg.showModal();
   patientName.focus();
 }
 patientSave.onclick = ()=>{
   const name = patientName.value.trim();
+  const room = (patientRoom.value || "").trim();
+  const mrn  = (patientMRN.value || "").trim();
+
   if(!name) return;
-  ensurePatient(name);
+
+  const p = ensurePatient(name);
+  p.room = room;
+  p.mrn = mrn;
+
   saveState();
   selectedPatient = name;
   patientDlg.close();
@@ -864,5 +875,6 @@ window.MAR_APP = {
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
+
 
 
