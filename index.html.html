@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Mini MAR</title>
+
+  <style>
+    :root{
+      --bg:#0b0b0f; --panel:#13131a; --panel2:#1b1b25;
+      --text:#f2f2f7; --muted:#a1a1aa; --grid:#2a2a35;
+      --accent:#0a84ff; --warn:#ff453a;
+      --due:#ffd60a; --done:#34c759;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial; background:var(--bg); color:var(--text); height:100vh; overflow:hidden;}
+    .app{display:flex; height:100vh; width:100vw;}
+    .left{width:28%; min-width:170px; background:var(--panel); border-right:1px solid var(--grid); display:flex; flex-direction:column;}
+    .right{flex:1; display:flex; flex-direction:column; overflow:hidden;}
+    .bar{display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--grid); background:rgba(19,19,26,.95); gap:10px;}
+    .title{font-weight:800}
+    .btn{background:var(--accent); color:white; border:none; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer; white-space:nowrap;}
+    .btn.secondary{background:var(--panel2); border:1px solid var(--grid); color:var(--text);}
+    .btn:disabled{opacity:.45; cursor:not-allowed;}
+    .list{padding:10px; overflow:auto; flex:1;}
+    .item{width:100%; text-align:left; padding:12px; margin:8px 0; background:var(--panel2); border:1px solid var(--grid); color:var(--text); border-radius:12px; cursor:pointer;}
+    .item.active{outline:2px solid rgba(10,132,255,.8);}
+    .sub{color:var(--muted); font-size:12px; margin-top:4px;}
+    .content{flex:1; overflow:auto; padding:12px;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;}
+    .pill{padding:6px 10px; border:1px solid var(--grid); border-radius:999px; background:var(--panel2); color:var(--muted); font-size:12px;}
+    .gridwrap{background:var(--panel); border:1px solid var(--grid); border-radius:14px; overflow:auto;}
+    .grid{display:grid; grid-template-columns:220px repeat(24,70px); min-width:calc(220px + 24*70px);}
+    .cell{border-right:1px solid var(--grid); border-bottom:1px solid var(--grid); padding:8px; font-size:12px; min-height:52px; display:flex; align-items:center; justify-content:center; color:var(--muted);}
+    .head{position:sticky; top:0; background:rgba(19,19,26,.98); z-index:3; font-weight:800; color:var(--text);}
+    .head.left{left:0; position:sticky; z-index:4;}
+    .leftcol{position:sticky; left:0; z-index:2; background:rgba(19,19,26,.98); justify-content:flex-start; color:var(--text); font-weight:800;}
+    .dose{width:100%; padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,214,10,.20); color:var(--text); display:flex; flex-direction:column; gap:4px; cursor:pointer; user-select:none;}
+    .dose .small{font-size:11px; color:var(--muted);}
+    .dose.done{background:rgba(52,199,89,.22); border-color:rgba(52,199,89,.35);}
+    .dose.late{background:rgba(255,69,58,.22); border-color:rgba(255,69,58,.45);}
+    .empty{padding:16px; color:var(--muted)}
+    dialog{border:none; border-radius:16px; padding:0; width:min(560px, 92vw); background:var(--panel); color:var(--text); box-shadow:0 20px 60px rgba(0,0,0,.55);}
+    .dlg-head{padding:14px; border-bottom:1px solid var(--grid); font-weight:900;}
+    .dlg-body{padding:14px; display:flex; flex-direction:column; gap:10px;}
+    .dlg-actions{display:flex; gap:10px; justify-content:flex-end; padding:14px; border-top:1px solid var(--grid);}
+    label{font-size:12px; color:var(--muted)}
+    input, select{width:100%; padding:12px; border-radius:12px; background:var(--panel2); border:1px solid var(--grid); color:var(--text); outline:none;}
+    .warnbox{padding:12px; border-radius:12px; border:1px solid rgba(255,69,58,.45); background:rgba(255,69,58,.18); color:var(--text); font-weight:900;}
+    .hint{color:var(--muted); font-size:12px; line-height:1.35;}
+    .err{color:var(--warn); font-size:12px; white-space:pre-wrap;}
+
+    .overlay{position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; padding:18px; z-index:9999;}
+    .card{width:min(560px, 94vw); background:var(--panel); border:1px solid var(--grid); border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.55);}
+    .card-head{padding:14px; border-bottom:1px solid var(--grid); font-weight:900; display:flex; justify-content:space-between; align-items:center;}
+    .card-body{padding:14px; display:flex; flex-direction:column; gap:10px;}
+
+    .calendarBtn{padding:10px 12px; border-radius:10px; border:1px solid var(--grid); background:var(--panel2); color:var(--text); font-weight:800; cursor:pointer; display:flex; align-items:center; gap:8px;}
+    .calendarBtn input[type="date"]{padding:0; border:none; background:transparent; color:var(--text); font-weight:800;}
+    .calendarBtn input[type="date"]::-webkit-calendar-picker-indicator{filter: invert(1); opacity:.9; cursor:pointer;}
+
+    .radioRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .radioRow input{width:auto;}
+    .days{display:flex; gap:8px; flex-wrap:wrap; padding:8px; border:1px solid var(--grid); border-radius:12px; background:var(--panel2);}
+    .daychip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid var(--grid); background:rgba(255,255,255,.04); font-size:12px; color:var(--text); cursor:pointer; user-select:none;}
+    .daychip input{width:auto; margin:0;}
+
+    .two-col{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+    @media (max-width: 860px){
+      .left{width:38%}
+      .grid{grid-template-columns:180px repeat(24,64px); min-width:calc(180px + 24*64px);}
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Login Overlay -->
+<div class="overlay" id="loginOverlay">
+  <div class="card">
+    <div class="card-head">
+      <div>Login</div>
+      <div class="muted" id="fbStatus">Firebase: checking…</div>
+    </div>
+    <div class="card-body">
+      <div>
+        <label>Facility Code</label>
+        <input id="facilityInput" placeholder="e.g., AHLTC001" autocomplete="off" />
+      </div>
+      <div>
+        <label>Nurse ID</label>
+        <input id="nurseInput" placeholder="e.g., n123" autocomplete="username" />
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="passInput" type="password" placeholder="Password" autocomplete="current-password" />
+      </div>
+
+      <div class="hint">
+        로그인 방식: <b>Facility Code + Nurse ID</b>로 내부 이메일 생성<br/>
+        이메일 = <b>NurseID@FacilityCode.local</b>
+      </div>
+
+      <div class="err" id="loginErr"></div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; padding-top:6px;">
+        <button class="btn secondary" id="demoBtn">Demo (no login)</button>
+        <button class="btn" id="loginBtn">Login</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="appRoot" style="display:none;">
+  <div class="left">
+    <div class="bar">
+      <div class="title">Patients</div>
+      <button class="btn" id="addPatientBtn">+</button>
+    </div>
+    <div class="list" id="patientList"></div>
+  </div>
+
+  <div class="right">
+    <div class="bar">
+      <div>
+        <div class="title" id="rightTitle">Select patient</div>
+        <div class="sub" id="rightSub"></div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn secondary" id="prevDayBtn">◀︎ Day</button>
+        <button class="btn secondary" id="nextDayBtn">Day ▶︎</button>
+
+        <div class="calendarBtn" title="Select date">
+          📅 <input type="date" id="datePicker" />
+        </div>
+
+        <button class="btn" id="addMedBtn" disabled>+ Med</button>
+        <button class="btn secondary" id="printBtn" disabled>Print</button>
+        <button class="btn secondary" id="qrBtn" disabled>QR code</button>
+        <button class="btn secondary" id="scanBtn" disabled>Scan</button>
+        <button class="btn secondary" id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="row">
+        <span class="pill" id="todayPill"></span>
+        <span class="pill" id="whoPill">Not signed in</span>
+        <span class="pill">Tap dose = give / tap again = cancel</span>
+        <span class="pill">Warn if outside ±1h</span>
+      </div>
+
+      <div class="gridwrap" id="gridWrap">
+        <div class="empty">Select a patient to view MAR.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Patient Dialog -->
+<dialog id="patientDlg">
+  <div class="dlg-head">Add Patient</div>
+
+  <div class="dlg-body">
+    <div>
+      <label>Patient name</label>
+      <input id="patientName" placeholder="e.g., Kim" />
+    </div>
+
+    <div>
+      <label>Room</label>
+      <input id="patientRoom" placeholder="e.g., 203A" />
+    </div>
+
+    <div>
+      <label>MRN</label>
+      <input id="patientMRN" placeholder="e.g., 12345678" />
+    </div>
+
+  </div>
+
+  <div class="dlg-actions">
+    <button class="btn secondary" id="patientCancel">Cancel</button>
+    <button class="btn" id="patientSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Add Med Dialog -->
+<dialog id="medDlg">
+  <div class="dlg-head">Add Medication</div>
+  <div class="dlg-body">
+    <div>
+      <label>Medication name</label>
+      <input id="medName" placeholder="e.g., Metformin" />
+    </div>
+
+    <div>
+      <label>Times (24h, comma-separated)</label>
+      <input id="medTimes" placeholder="e.g., 09:00,13:00,21:00" />
+    </div>
+
+    <div class="hint">Schedule 옵션</div>
+    <div class="radioRow">
+      <label><input type="radio" name="schedType" value="weekly" checked /> 요일(월~일)</label>
+      <label><input type="radio" name="schedType" value="interval" /> _일에 한번</label>
+    </div>
+
+    <div id="weeklyBox">
+      <label>요일 선택 (월~일)</label>
+      <div class="days" id="weekdayChips"></div>
+      <div class="hint">체크된 요일에만 MAR에 표시됩니다.</div>
+    </div>
+
+    <div id="intervalBox" style="display:none;">
+      <div class="two-col">
+        <div>
+          <label>_ 일에 한번 (2~6)</label>
+          <input id="intervalN" inputmode="numeric" placeholder="2~6" />
+        </div>
+        <div>
+          <label>시작일</label>
+          <input id="intervalStart" type="date" />
+        </div>
+      </div>
+      <div class="hint">시작일을 1회차로 보고, N일 간격으로 표시됩니다.</div>
+    </div>
+  </div>
+
+  <div class="dlg-actions">
+    <button class="btn secondary" id="medCancel">Cancel</button>
+    <button class="btn" id="medSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Warning Dialog -->
+<dialog id="warnDlg">
+  <div class="dlg-head">⚠ 투여시간 경고</div>
+  <div class="dlg-body">
+    <div class="warnbox">투여시간 경고 - 약사에게 연락</div>
+    <div class="muted" id="warnDetail" style="font-size:12px;"></div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn" id="warnClose">Close</button>
+  </div>
+</dialog>
+
+
+<!-- Scan Dialog -->
+<dialog id="scanDlg">
+  <div class="dlg-head">Scan QR</div>
+  <div class="dlg-body">
+    <div class="hint" id="scanStatus">대기중…</div>
+
+    <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
+      <div style="flex:1; min-width:260px;">
+        <div style="font-weight:700; margin-bottom:6px;">Camera</div>
+        <div id="scanReader" style="width:320px; max-width:100%; background:#111; border-radius:12px; overflow:hidden;"></div>
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button class="btn secondary" id="camStartBtn">Start camera</button>
+          <button class="btn secondary" id="camStopBtn" disabled>Stop</button>
+          <button class="btn" id="camNextBtn" disabled>Next scan</button>
+        </div>
+      </div>
+
+      <div style="flex:1; min-width:240px;">
+        <div style="font-weight:700; margin-bottom:6px;">Scanner (Bluetooth/USB)</div>
+        <div class="hint">스캐너로 QR을 찍으면 키보드처럼 입력됩니다. 아래 입력칸에 포커스가 있어야 해요.</div>
+        <input id="scanInput" placeholder="Scan here…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <div class="hint" style="margin-top:6px;">환자 QR → Batch QR 순서 (환자 확인은 10분 유효)</div>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="scanCloseBtn">Close</button>
+  </div>
+</dialog>
+
+
+<!-- Initials Dialog -->
+<dialog id="initialsDlg">
+  <div class="dlg-head">Your Initials</div>
+  <div class="dlg-body">
+    <div class="hint">
+      MAR 기록에는 <b>HH:MM + 이니셜</b>이 들어갑니다. (예: 09:12 LSH)
+    </div>
+    <div>
+      <label>Initials</label>
+      <input id="initialsInput" placeholder="e.g., LSH or LSH2" maxlength="6" />
+    </div>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn secondary" id="initialsLater">Later</button>
+    <button class="btn" id="initialsSave">Save</button>
+  </div>
+</dialog>
+
+<!-- IMPORTANT: external module -->
+<script type="module" src="./app.v2.mjs"></script>
+<script type="module" src="./sync.v2.mjs"></script>
+<script type="module" src="./qr.v2.mjs"></script>
+</body>
+</html>
