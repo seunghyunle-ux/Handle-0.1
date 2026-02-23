@@ -1,4 +1,4 @@
-/* app.mjs - Mini MAR local + Firebase Auth init (no sync yet) */
+/* app.v2.mjs - Mini MAR local + Firebase Auth init (no sync yet) */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
@@ -73,6 +73,40 @@ function escapeHtml(s){
     .replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;")
     .replace(/'/g,"&#039;");
+}
+
+/* ===========================
+   HARD DELETE helpers (patient + med)
+   - 환자 퇴원 = patient 완전 삭제
+   - 약 중단 = med 완전 삭제
+=========================== */
+function deletePatientByName(name){
+  if(!name) return;
+  if(!state.patients || !state.patients[name]) return;
+
+  // 완전 삭제
+  delete state.patients[name];
+
+  // 선택 환자 정리
+  if(selectedPatient === name){
+    const names = Object.keys(state.patients).sort((a,b)=>a.localeCompare(b));
+    selectedPatient = names.length ? names[0] : null;
+  }
+
+  saveState();
+  renderAll();
+}
+
+function deleteMedFromSelectedPatient(medNameKey){
+  if(!selectedPatient) return;
+  const p = ensurePatient(selectedPatient);
+  if(!p.meds || !p.meds[medNameKey]) return;
+
+  // 완전 삭제 (해당 med의 history도 같이 날아감)
+  delete p.meds[medNameKey];
+
+  saveState();
+  renderAll();
 }
 
 /* ===========================
@@ -221,11 +255,63 @@ function renderPatients(){
     patientListEl.innerHTML = `<div class="empty">No patients. Tap +</div>`;
     return;
   }
+
   for(const name of names){
     const btn = document.createElement("button");
     btn.className = "item" + (selectedPatient===name ? " active":"");
+
     const meds = Object.keys(state.patients[name].meds || {});
-    btn.innerHTML = `<div>${escapeHtml(name)}</div><div class="sub">${meds.length} meds</div>`;
+    // 기존: btn.innerHTML 문자열 -> 변경: DOM으로 구성 (data-attribute 깨짐/인젝션 방지)
+    btn.innerHTML = "";
+
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.alignItems = "center";
+    wrap.style.justifyContent = "space-between";
+    wrap.style.gap = "8px";
+    wrap.style.width = "100%";
+
+    const left = document.createElement("div");
+    left.style.minWidth = "0";
+
+    const title = document.createElement("div");
+    title.style.whiteSpace = "nowrap";
+    title.style.overflow = "hidden";
+    title.style.textOverflow = "ellipsis";
+    title.textContent = name;
+
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = `${meds.length} meds`;
+
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.title = "Delete patient";
+    del.textContent = "🗑️";
+    del.style.background = "none";
+    del.style.border = "none";
+    del.style.cursor = "pointer";
+    del.style.fontSize = "14px";
+    del.style.flex = "0 0 auto";
+
+    // 중요: 삭제 버튼 누를 때 환자 선택(btn.onclick) 안 타게 막기
+    del.onclick = (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      const ok1 = confirm(`환자 "${name}"를 완전 삭제할까요? 되돌릴 수 없습니다.`);
+      if(!ok1) return;
+      const ok2 = confirm("정말 삭제합니다. 계속할까요?");
+      if(!ok2) return;
+      deletePatientByName(name);
+    };
+
+    wrap.appendChild(left);
+    wrap.appendChild(del);
+
+    btn.appendChild(wrap);
     btn.onclick = ()=>{ selectedPatient = name; renderAll(); };
     patientListEl.appendChild(btn);
   }
@@ -296,12 +382,63 @@ function renderGrid(){
       schText = `${sch.every}일마다 · 시작 ${sch.start || "-"}`;
     }
 
-    lc.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:4px;">
-        <div>${escapeHtml(med)}</div>
-        <div class="muted" style="font-size:11px;">${escapeHtml((meds[med].times||[]).join(", "))}</div>
-        <div class="muted" style="font-size:11px;">${escapeHtml(schText)}</div>
-      </div>`;
+    // 기존: lc.innerHTML 문자열 -> 변경: DOM으로 구성 (삭제 버튼 안전)
+    lc.innerHTML = "";
+    const col = document.createElement("div");
+    col.style.display = "flex";
+    col.style.flexDirection = "column";
+    col.style.gap = "6px";
+
+    const topRow = document.createElement("div");
+    topRow.style.display = "flex";
+    topRow.style.alignItems = "center";
+    topRow.style.justifyContent = "space-between";
+    topRow.style.gap = "8px";
+
+    const medTitle = document.createElement("div");
+    medTitle.style.fontWeight = "700";
+    medTitle.style.minWidth = "0";
+    medTitle.style.whiteSpace = "nowrap";
+    medTitle.style.overflow = "hidden";
+    medTitle.style.textOverflow = "ellipsis";
+    medTitle.textContent = med;
+
+    const delMedBtn = document.createElement("button");
+    delMedBtn.type = "button";
+    delMedBtn.title = "Remove medication";
+    delMedBtn.textContent = "🗑️";
+    delMedBtn.style.background = "none";
+    delMedBtn.style.border = "none";
+    delMedBtn.style.cursor = "pointer";
+    delMedBtn.style.fontSize = "14px";
+    delMedBtn.style.flex = "0 0 auto";
+
+    delMedBtn.onclick = (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      const ok = confirm(`"${med}" 약을 완전 삭제할까요? (이 약의 기록도 함께 삭제됩니다)`);
+      if(!ok) return;
+      deleteMedFromSelectedPatient(med);
+    };
+
+    topRow.appendChild(medTitle);
+    topRow.appendChild(delMedBtn);
+
+    const timesLine = document.createElement("div");
+    timesLine.className = "muted";
+    timesLine.style.fontSize = "11px";
+    timesLine.textContent = (meds[med].times||[]).join(", ");
+
+    const schLine = document.createElement("div");
+    schLine.className = "muted";
+    schLine.style.fontSize = "11px";
+    schLine.textContent = schText;
+
+    col.appendChild(topRow);
+    col.appendChild(timesLine);
+    col.appendChild(schLine);
+
+    lc.appendChild(col);
     grid.appendChild(lc);
 
     const hist = (meds[med].history && meds[med].history[dayKey]) ? meds[med].history[dayKey] : [];
