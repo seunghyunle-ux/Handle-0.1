@@ -162,11 +162,17 @@ function popupHtmlShell(){
 }
 
 function openPopup(){
-  const w = window.open("", "_blank", "noopener,width=1100,height=780");
+  // Blob URL로 팝업을 열면 document.write 이슈를 완전히 피할 수 있음
+  const html = popupHtmlShell();
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+
+  const w = window.open(url, "_blank", "width=1100,height=780");
   if(!w) return null;
-  w.document.open();
-  w.document.write(popupHtmlShell());
-  w.document.close();
+
+  // 메모리 정리 (팝업이 로드된 뒤 지워도 됨)
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_e){} }, 10_000);
+
   return w;
 }
 
