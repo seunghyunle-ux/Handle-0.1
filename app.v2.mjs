@@ -284,9 +284,19 @@ function renderPatients(){
     title.style.textOverflow = "ellipsis";
     title.textContent = name;
 
+    const p = ensurePatient(name);
+
     const sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = `${meds.length} meds`;
+
+    const roomText = (p.room || "").trim();
+    const mrnText  = (p.mrn || "").trim();
+
+    if(roomText || mrnText){
+      sub.textContent = `${roomText || "-"} | ${mrnText || "-"}`;
+    }else{
+      sub.textContent = `${meds.length} meds`;
+}
 
     left.appendChild(title);
     left.appendChild(sub);
@@ -875,6 +885,7 @@ window.MAR_APP = {
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
+
 
 
 
