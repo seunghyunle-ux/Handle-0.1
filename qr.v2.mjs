@@ -139,6 +139,7 @@ function popupHtmlShell(){
           <div class="hint" id="countHint">0</div>
         </div>
         <div class="body" id="rightBody">
+          <div id="patientQrCard"></div>
           <div class="hint">QR이 여기 생성됩니다. Export할 항목을 체크하세요.</div>
           <div class="err" id="err"></div>
         </div>
@@ -352,7 +353,62 @@ async function getUserRole(auth, db){
 
     const $ = (id)=> w.document.getElementById(id);
     const leftBody = $("leftBody");
-    const rightBody = $("rightBody");
+    const patientQrCard = $("patientQrCard");
+
+// 환자 고유 QR (이름+방+MRN) 항상 표시
+(function renderPatientIdQr(){
+  if(!patientQrCard) return;
+
+  const patientPayload = JSON.stringify({
+    v: 1,
+    type: "patient",
+    facility: facilityCode || null,
+    patient: {
+      name: patientName || null,
+      room: room || null,
+      mrn: mrn || null
+    }
+  });
+
+  const card = w.document.createElement("div");
+  card.className = "card";
+  card.dataset.id = "patient_id";
+  card.dataset.payload = patientPayload;
+
+  const qrbox = w.document.createElement("div");
+  qrbox.className = "qrbox";
+  renderQrIntoBox(w, qrbox, patientPayload);
+
+  const meta = w.document.createElement("div");
+  meta.className = "meta";
+  meta.innerHTML = `
+    <div class="row" style="justify-content:space-between;">
+      <div class="bold">Patient ID</div>
+      <label class="chk" style="justify-content:flex-end;">
+        <input type="checkbox" data-export="1" data-id="patient_id" />
+        <span class="hint">Export</span>
+      </label>
+    </div>
+    <div class="line"><span class="bold">Name</span>: ${escapeHtml(patientName)}</div>
+    <div class="line"><span class="bold">Room</span>: ${escapeHtml(room||"-")} · <span class="bold">MRN</span>: ${escapeHtml(mrn||"-")}</div>
+    <div class="hint">환자 팔찌/환자 선택용 QR</div>
+  `;
+
+  const ta = w.document.createElement("textarea");
+  ta.value = patientPayload;
+  ta.readOnly = true;
+  meta.appendChild(ta);
+
+  card.appendChild(qrbox);
+  card.appendChild(meta);
+
+  patientQrCard.innerHTML = "";
+  patientQrCard.appendChild(card);
+
+  // export enable 업데이트 연결
+  const cb = card.querySelector('input[type="checkbox"][data-export="1"]');
+  if(cb) cb.onchange = ()=> updateExportEnabled();
+})();
     const btnMake = $("btnMake");
     const btnExport = $("btnExport");
     const btnClose = $("btnClose");
