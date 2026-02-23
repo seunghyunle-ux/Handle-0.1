@@ -827,11 +827,17 @@ function __emitLocalChange(reason){
 }
 
 // Wrap saveState() so any local mutation notifies sync
+let __lastLocalWriteAt = 0;
+
 const __origSaveState = saveState;
 saveState = function(){
+  __lastLocalWriteAt = Date.now();
   __origSaveState();
   __emitLocalChange("saveState");
 };
+
+// sync.mjs가 읽을 수 있게 노출
+window.MAR_APP.getLastLocalWriteAt = ()=>__lastLocalWriteAt;
 
 // Facility parsing helper (from email like n123@AHLTC001.local)
 function __parseFacilityFromEmail(email){
@@ -845,6 +851,7 @@ window.MAR_APP = {
   setState: (next)=>{ state = next; renderAll(); },
   render: ()=> renderAll(),
   onLocalChange: (fn)=>{ __marLocalChangeListeners.add(fn); return ()=>__marLocalChangeListeners.delete(fn); },
+  getLastLocalWriteAt: ()=>__lastLocalWriteAt, 
   getFacilityCode: ()=>{
     // Prefer auth email derived facility
     if(auth && auth.currentUser && auth.currentUser.email){
@@ -855,3 +862,4 @@ window.MAR_APP = {
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
+
