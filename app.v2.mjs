@@ -84,10 +84,8 @@ function deletePatientByName(name){
   if(!name) return;
   if(!state.patients || !state.patients[name]) return;
 
-  // 완전 삭제
   delete state.patients[name];
 
-  // 선택 환자 정리
   if(selectedPatient === name){
     const names = Object.keys(state.patients).sort((a,b)=>a.localeCompare(b));
     selectedPatient = names.length ? names[0] : null;
@@ -102,7 +100,6 @@ function deleteMedFromSelectedPatient(medNameKey){
   const p = ensurePatient(selectedPatient);
   if(!p.meds || !p.meds[medNameKey]) return;
 
-  // 완전 삭제 (해당 med의 history도 같이 날아감)
   delete p.meds[medNameKey];
 
   saveState();
@@ -190,15 +187,34 @@ function setWhoPill(){
    Local data model
 =========================== */
 const KEY = "mini_mar_local_v3";
+
+function migrateState(s){
+  // ✅ state meta
+  if(s.__rev === undefined) s.__rev = 0;
+  if(s.__updatedAt === undefined) s.__updatedAt = 0;
+
+  if(!s.patients) s.patients = {};
+
+  // ✅ patient schema migration
+  for(const n of Object.keys(s.patients)){
+    const p = s.patients[n] || {};
+    if(!p.meds) p.meds = {};
+    if(p.room === undefined) p.room = "";
+    if(p.mrn === undefined) p.mrn = "";
+    s.patients[n] = p;
+  }
+  return s;
+}
+
 function loadState(){
   try{
     const raw = localStorage.getItem(KEY);
-    if(!raw) return {patients:{}};
+    if(!raw) return migrateState({patients:{}});
     const s = JSON.parse(raw);
-    if(!s || !s.patients) return {patients:{}};
-    return s;
+    if(!s || !s.patients) return migrateState({patients:{}});
+    return migrateState(s);
   }catch(_e){
-    return {patients:{}};
+    return migrateState({patients:{}});
   }
 }
 function saveState(){
@@ -265,7 +281,6 @@ function renderPatients(){
     btn.className = "item" + (selectedPatient===name ? " active":"");
 
     const meds = Object.keys(state.patients[name].meds || {});
-    // 기존: btn.innerHTML 문자열 -> 변경: DOM으로 구성 (data-attribute 깨짐/인젝션 방지)
     btn.innerHTML = "";
 
     const wrap = document.createElement("div");
@@ -296,7 +311,7 @@ function renderPatients(){
       sub.textContent = `${roomText || "-"} | ${mrnText || "-"}`;
     }else{
       sub.textContent = `${meds.length} meds`;
-}
+    }
 
     left.appendChild(title);
     left.appendChild(sub);
@@ -311,7 +326,6 @@ function renderPatients(){
     del.style.fontSize = "14px";
     del.style.flex = "0 0 auto";
 
-    // 중요: 삭제 버튼 누를 때 환자 선택(btn.onclick) 안 타게 막기
     del.onclick = (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
@@ -343,6 +357,13 @@ function renderHeader(){
   }else{
     rightTitleEl.textContent = selectedPatient;
     const medsCount = Object.keys(state.patients[selectedPatient].meds||{}).length;
+
+    // ✅ room/mrn 표시도 같이 보여주고 싶으면 이 라인 사용
+    // const p = ensurePatient(selectedPatient);
+    // const roomText = (p.room||"").trim();
+    // const mrnText = (p.mrn||"").trim();
+    // rightSubEl.textContent = `${roomText||"-"} | ${mrnText||"-"} · ${medsCount} meds · Tap dose to record`;
+
     rightSubEl.textContent = `${medsCount} meds · Tap dose to record`;
     addMedBtn.disabled = false;
     printBtn.disabled = false;
@@ -396,7 +417,6 @@ function renderGrid(){
       schText = `${sch.every}일마다 · 시작 ${sch.start || "-"}`;
     }
 
-    // 기존: lc.innerHTML 문자열 -> 변경: DOM으로 구성 (삭제 버튼 안전)
     lc.innerHTML = "";
     const col = document.createElement("div");
     col.style.display = "flex";
@@ -748,7 +768,6 @@ function buildMonthlyPrintHTML(patientName, monthDate){
       .foot{ margin-top:10px; font-size:10px; display:flex; justify-content:space-between; color:#333; }
     </style>`;
 
-  // NOTE: print trigger uses body onload; no script tags needed.
   return `
     <!doctype html><html><head><meta charset="utf-8" />
     <title>MAR Print</title>${style}</head>
@@ -855,11 +874,14 @@ let __lastLocalWriteAt = 0;
 const __origSaveState = saveState;
 saveState = function(){
   __lastLocalWriteAt = Date.now();
+
+  // ✅ 충돌 해결용 메타데이터 (sync가 최신 판단 가능)
+  state.__rev = (Number(state.__rev) || 0) + 1;
+  state.__updatedAt = __lastLocalWriteAt;
+
   __origSaveState();
   __emitLocalChange("saveState");
 };
-
-// sync.mjs가 읽을 수 있게 노출
 
 // Facility parsing helper (from email like n123@AHLTC001.local)
 function __parseFacilityFromEmail(email){
@@ -870,22 +892,25 @@ function __parseFacilityFromEmail(email){
 // Expose a small app API (read/write state + subscribe)
 window.MAR_APP = {
   getState: ()=> state,
-  setState: (next)=>{ state = next; renderAll(); },
+  setState: (next)=>{
+    // ✅ remote에서 들어온 state도 마이그레이션해서 room/mrn/rev 필드 유지
+    state = migrateState(next || {patients:{}});
+    renderAll();
+  },
   render: ()=> renderAll(),
   onLocalChange: (fn)=>{ __marLocalChangeListeners.add(fn); return ()=>__marLocalChangeListeners.delete(fn); },
-  getLastLocalWriteAt: ()=>__lastLocalWriteAt, 
+
+  // sync/guard helpers
+  getLastLocalWriteAt: ()=>__lastLocalWriteAt,
+
+  // QR module helper
+  getSelectedPatient: ()=>selectedPatient,
+
   getFacilityCode: ()=>{
-    // Prefer auth email derived facility
     if(auth && auth.currentUser && auth.currentUser.email){
       return __parseFacilityFromEmail(auth.currentUser.email);
     }
-    // Fallback: facility input value (may persist)
     const el = document.getElementById("facilityInput");
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
-
-
-
-
-
