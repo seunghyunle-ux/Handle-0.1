@@ -860,7 +860,6 @@ saveState = function(){
 };
 
 // sync.mjs가 읽을 수 있게 노출
-window.MAR_APP.getLastLocalWriteAt = ()=>__lastLocalWriteAt;
 
 // Facility parsing helper (from email like n123@AHLTC001.local)
 function __parseFacilityFromEmail(email){
@@ -885,6 +884,7 @@ window.MAR_APP = {
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
 };
+
 
 
 
