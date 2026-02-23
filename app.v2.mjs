@@ -138,6 +138,8 @@ const gridWrapEl = document.getElementById("gridWrap");
 const todayPillEl = document.getElementById("todayPill");
 const addMedBtn = document.getElementById("addMedBtn");
 const printBtn = document.getElementById("printBtn");
+const qrBtn = document.getElementById("qrBtn");
+const scanBtn = document.getElementById("scanBtn");
 const datePicker = document.getElementById("datePicker");
 
 const patientDlg = document.getElementById("patientDlg");
@@ -362,7 +364,7 @@ function renderHeader(){
 
   if(!selectedPatient){
     rightTitleEl.textContent = "Select patient";
-    rightSubEl.textContent = "";
+    rightSubEl.textContent = "";S
     addMedBtn.disabled = true;
     printBtn.disabled = true;
   }else{
@@ -378,6 +380,7 @@ function renderHeader(){
     rightSubEl.textContent = `${medsCount} meds · Tap dose to record`;
     addMedBtn.disabled = false;
     printBtn.disabled = false;
+    if(scanBtn) scanBtn.disabled = false;
   }
   setWhoPill();
 }
