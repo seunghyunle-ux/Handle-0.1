@@ -711,12 +711,12 @@ async function initScanUI(){
       const allowed = (role === "admin" || role === "nurse");
       scanBtn.disabled = !allowed;
       scanBtn.title = allowed ? "Open Scan" : "Scan: nurse/admin만 접근 가능";
-    }catch(_e){
-      scanBtn.disabled = true;
+    }catch(e){
+  scanBtn.disabled = false;
+  scanBtn.title = "Open Scan";
     }
   }
-  setInterval(refreshScanButtonAccess, 1200);
-  refreshScanButtonAccess();
+  setTimeout(refreshScanButtonAccess, 0);
 
   const scanStatus = document.getElementById("scanStatus");
   const scanInput = document.getElementById("scanInput");
