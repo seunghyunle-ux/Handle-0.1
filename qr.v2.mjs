@@ -3,11 +3,17 @@
    - nurse/admin only (social worker blocked)
    - left: meds grouped by time with checkboxes
    - right: generated QR batches with select + export JPG
+
+   FIXES (2026-02):
+   - ✅ Fix SyntaxError: stray code after openPopup()
+   - ✅ Avoid popup blocker: open window first, then await role check
+   - ✅ Robust QR rendering: if CDN lib loads late, fallback text still works
 */
 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
 async function waitForGlobals(){
   let tries = 0;
   while(true){
@@ -37,7 +43,7 @@ function groupMedsByTime(patientObj){
   const meds = (patientObj && patientObj.meds) ? patientObj.meds : {};
   const out = new Map(); // time -> array of medNames
   for(const medName of Object.keys(meds)){
-    const times = Array.isArray(meds[medName].times) ? meds[medName].times : [];
+    const times = Array.isArray(meds[medName]?.times) ? meds[medName].times : [];
     for(const t of times){
       if(!out.has(t)) out.set(t, []);
       out.get(t).push(medName);
@@ -50,13 +56,11 @@ function groupMedsByTime(patientObj){
 }
 
 function buildPayload({ facilityCode, patientName, patientRoom, patientMRN, time, meds }){
-  // QR에 들어갈 문자열: 너무 길어질 수 있으니 1차는 JSON compact
-  // 필요하면 나중에 "MRN|time|med1;med2" 같은 포맷으로 바꿀 수 있음
   const payload = {
     v: 1,
     facility: facilityCode || null,
     patient: {
-      name: patientName || null,     // HIPAA 민감하면 여기 빼도 됨
+      name: patientName || null,
       room: patientRoom || null,
       mrn: patientMRN || null
     },
@@ -66,9 +70,7 @@ function buildPayload({ facilityCode, patientName, patientRoom, patientMRN, time
   return JSON.stringify(payload);
 }
 
-// Minimal QR encoder (uses public CDN library if available)
-// We'll inject a tiny QR generator script (qrcode-generator) into the popup.
-// If blocked, we fallback to "text only" (still exportable as image).
+/* Popup HTML */
 function popupHtmlShell(){
   return `<!doctype html><html><head>
   <meta charset="utf-8"/>
@@ -147,7 +149,6 @@ function popupHtmlShell(){
 
     <!-- QR generator library (small). If CDN blocked, we will fallback. -->
     <script>
-      // Load qrcode-generator from CDN. If it fails, we still show payload text.
       (function(){
         const s=document.createElement('script');
         s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
@@ -161,11 +162,9 @@ function popupHtmlShell(){
   </body></html>`;
 }
 
+/* ✅ 핵심: about:blank + document.write 방식으로 안정화 */
 function openPopup(){
-  const url = new URL("./qr.html", location.href).toString();
-  const w = window.open(url, "_blank", "width=1100,height=780");
-  return w;
-}
+  const w = window.open("", "_blank", "width=1100,height=780");
   if(!w) return null;
   w.document.open();
   w.document.write(popupHtmlShell());
@@ -173,26 +172,38 @@ function openPopup(){
   return w;
 }
 
-function dataUrlToBlob(dataUrl){
-  const [head, b64] = dataUrl.split(",");
-  const mime = /data:(.*?);base64/.exec(head)?.[1] || "image/jpeg";
-  const bin = atob(b64);
-  const u8 = new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) u8[i] = bin.charCodeAt(i);
-  return new Blob([u8], { type: mime });
-}
-
 // Render QR into a white box using library if available; else show text
 function renderQrIntoBox(win, boxEl, payload){
   boxEl.innerHTML = "";
-  if(win.__QR_LIB__ && win.qrcode){
+
+  // If library not ready yet, show placeholder + retry shortly
+  if(win.__QR_LIB__ !== true){
+    const pre = win.document.createElement("div");
+    pre.style.padding = "10px";
+    pre.style.fontSize = "12px";
+    pre.style.color = "#000";
+    pre.textContent = (win.__QR_LIB__ === false) ? "QR lib blocked. Showing payload." : "Loading QR…";
+    boxEl.appendChild(pre);
+
+    // retry once or twice (in case CDN loads late)
+    let tries = 0;
+    const t = win.setInterval(()=>{
+      tries++;
+      if(win.__QR_LIB__ === true && win.qrcode){
+        win.clearInterval(t);
+        renderQrIntoBox(win, boxEl, payload);
+      }
+      if(tries >= 10) win.clearInterval(t);
+    }, 200);
+    return;
+  }
+
+  if(win.qrcode){
     try{
-      const qr = win.qrcode(0, "M"); // auto type, medium error correction
+      const qr = win.qrcode(0, "M");
       qr.addData(payload);
       qr.make();
-      // qr.createImgTag(cellSize, margin)
       const imgTag = qr.createImgTag(4, 8);
-      // Insert generated img
       const div = win.document.createElement("div");
       div.innerHTML = imgTag;
       const img = div.querySelector("img");
@@ -207,6 +218,7 @@ function renderQrIntoBox(win, boxEl, payload){
       // fallthrough
     }
   }
+
   // fallback: show payload shortened
   const pre = win.document.createElement("div");
   pre.style.padding = "10px";
@@ -218,11 +230,9 @@ function renderQrIntoBox(win, boxEl, payload){
 }
 
 async function exportCardAsJpg(win, cardEl, fileName){
-  // Uses canvas by drawing the QR <img> + some text.
-  // For simplicity, we capture only the QR image area as JPG if available.
+  // Prefer direct QR img download if available
   const qrImg = cardEl.querySelector("img");
   if(qrImg && qrImg.src){
-    // Download QR img directly
     const a = win.document.createElement("a");
     a.href = qrImg.src;
     a.download = fileName;
@@ -230,7 +240,7 @@ async function exportCardAsJpg(win, cardEl, fileName){
     return true;
   }
 
-  // Fallback: render card text to canvas (rough)
+  // Fallback: render payload to canvas (rough)
   const payload = cardEl.dataset.payload || "";
   const c = win.document.createElement("canvas");
   c.width = 900; c.height = 520;
@@ -259,7 +269,6 @@ async function getUserRole(auth, db){
   const u = auth.currentUser;
   if(!u) return null;
 
-  // Try users/{uid}.role first
   try{
     const ref = doc(db, "users", u.uid);
     const snap = await getDoc(ref);
@@ -272,9 +281,7 @@ async function getUserRole(auth, db){
     console.warn("QR: role lookup users/{uid} failed:", e);
   }
 
-  // Fallback: allow if email includes ".local" and nurse id pattern? (optional)
-  // For safety: default deny
-  return null;
+  return null; // default deny
 }
 
 (async function main(){
@@ -290,11 +297,11 @@ async function getUserRole(auth, db){
   }
 
   async function refreshQrButtonAccess(){
-    // default disabled until allowed
     qrBtn.disabled = true;
 
     if(!auth.currentUser){
       qrBtn.disabled = true;
+      qrBtn.title = "로그인 필요";
       return;
     }
 
@@ -302,34 +309,45 @@ async function getUserRole(auth, db){
     const allowed = (role === "nurse" || role === "admin");
     qrBtn.disabled = !allowed;
 
-    if(!allowed){
-      qrBtn.title = "QR code: nurse/admin만 접근 가능";
-    }else{
-      qrBtn.title = "Open QR batch builder";
-    }
+    qrBtn.title = allowed ? "Open QR batch builder" : "QR code: nurse/admin만 접근 가능";
   }
 
-  // Refresh access on interval (simple + robust)
+  // Refresh access periodically
   setInterval(refreshQrButtonAccess, 1200);
   refreshQrButtonAccess();
 
   qrBtn.addEventListener("click", async ()=>{
-    // access re-check
+    // ✅ 팝업 차단 방지: 먼저 창을 열고, 그 다음 await
+    const w = openPopup();
+    if(!w){
+      alert("팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도하세요.");
+      return;
+    }
+
+    // Loading
+    try{
+      w.document.body.innerHTML = `<div style="padding:20px;background:#0b0b0f;color:#f2f2f7;font-family:system-ui;">Loading…</div>`;
+    }catch(_e){}
+
+    // 권한 재확인
     const role = await getUserRole(auth, db);
     if(!(role === "nurse" || role === "admin")){
+      w.close();
       alert("QR code 탭은 nurse/admin만 접근 가능합니다.");
       return;
     }
 
     const patientName = APP.getSelectedPatient ? APP.getSelectedPatient() : null;
     if(!patientName){
+      w.close();
       alert("환자를 먼저 선택하세요.");
       return;
     }
 
-    const st = APP.getState();
+    const st = APP.getState ? APP.getState() : null;
     const patient = st && st.patients ? st.patients[patientName] : null;
     if(!patient){
+      w.close();
       alert("선택된 환자를 찾을 수 없습니다.");
       return;
     }
@@ -338,13 +356,11 @@ async function getUserRole(auth, db){
     const room = safeText(patient.room).trim();
     const mrn  = safeText(patient.mrn).trim();
 
-    const w = openPopup();
-    if(!w){
-      alert("팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도하세요.");
-      return;
-    }
+    // 이제 진짜 UI를 다시 써준다
+    w.document.open();
+    w.document.write(popupHtmlShell());
+    w.document.close();
 
-    // Wait for popup DOM ready
     await sleep(80);
 
     const $ = (id)=> w.document.getElementById(id);
@@ -364,7 +380,7 @@ async function getUserRole(auth, db){
     qrTitle.textContent = `QR Code · ${patientName}`;
     qrSub.textContent = `${(room||"-")} | ${(mrn||"-")} · Facility: ${(facilityCode||"-")}`;
 
-    // Build left list grouped by time
+    // Left list
     const groups = groupMedsByTime(patient);
     leftBody.innerHTML = "";
 
@@ -409,13 +425,11 @@ async function getUserRole(auth, db){
     }
 
     btnClear.onclick = ()=> clearLeftChecks();
-
     btnClose.onclick = ()=> w.close();
 
     btnMake.onclick = ()=>{
       errEl.textContent = "";
 
-      // Collect checked meds grouped by time
       const checked = [...leftBody.querySelectorAll('input[type="checkbox"][data-time]:checked')];
       if(checked.length === 0){
         errEl.textContent = "왼쪽에서 약을 체크하세요.";
@@ -430,7 +444,6 @@ async function getUserRole(auth, db){
         map.get(t).push(m);
       }
 
-      // Create one batch per time
       for(const [time, meds] of [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
         const uniq = [...new Set(meds)].sort((a,b)=>a.localeCompare(b));
         if(uniq.length === 0) continue;
@@ -447,7 +460,6 @@ async function getUserRole(auth, db){
         const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
         generated.push({ id, time, meds: uniq, payload, createdAt: Date.now() });
 
-        // Render card
         const card = w.document.createElement("div");
         card.className = "card";
         card.dataset.id = id;
@@ -487,7 +499,6 @@ async function getUserRole(auth, db){
       clearLeftChecks();
       updateExportEnabled();
 
-      // Attach listener for export checks
       rightBody.querySelectorAll('input[type="checkbox"][data-export="1"]').forEach(cb=>{
         cb.onchange = ()=> updateExportEnabled();
       });
@@ -502,15 +513,22 @@ async function getUserRole(auth, db){
         return;
       }
 
-      // Export each selected QR as jpg
       let okCount = 0;
+
       for(const cb of selected){
-        const id = cb.getAttribute("data-id");
-        const card = rightBody.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+        const id = cb.getAttribute("data-id") || "";
+
+        const esc = (w.CSS && w.CSS.escape)
+          ? w.CSS.escape(id)
+          : id.replace(/["\\]/g, "\\$&");
+
+        const card = rightBody.querySelector(`.card[data-id="${esc}"]`);
         if(!card) continue;
 
         const time = safeText(card.querySelector(".bold")?.textContent || "").replace(" batch","");
-        const fileSafeName = (patientName + "_" + (mrn||"MRN") + "_" + time + "_batch").replace(/[^\w\-]+/g,"_") + ".jpg";
+        const fileSafeName =
+          (patientName + "_" + (mrn||"MRN") + "_" + time + "_batch").replace(/[^\w\-]+/g,"_") + ".jpg";
+
         try{
           await exportCardAsJpg(w, card, fileSafeName);
           okCount++;
@@ -520,14 +538,11 @@ async function getUserRole(auth, db){
       }
 
       errEl.textContent = okCount ? `Export 완료: ${okCount}개` : "Export 실패";
-      // uncheck after export
       selected.forEach(cb=>cb.checked=false);
       updateExportEnabled();
     };
 
-    // initial right side count
     updateExportEnabled();
   });
 
 })();
-
