@@ -27,18 +27,12 @@ try {
   app = initializeApp(firebaseConfig);
   try { getAnalytics(app); } catch(_e) {}
   auth = getAuth(app);
-  // iOS Safari often needs long-polling for Firestore (WebChannel/WebSocket issues)
-  const ua = navigator.userAgent || "";
-  const isIOS = /iPad|iPhone|iPod/i.test(ua);
-  if(isIOS){
-    try{
-      db = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
-    }catch(_e){
-      db = getFirestore(app);
-    }
-  }else{
-    db = getFirestore(app);
-  }
+  // Force long-polling on all devices (more stable across mobile networks/browsers)
+try{
+  db = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
+}catch(_e){
+  db = getFirestore(app);
+}
   fbStatus.textContent = "Firebase: ready";
 } catch (e) {
   console.error(e);
