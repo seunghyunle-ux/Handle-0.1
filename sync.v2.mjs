@@ -208,21 +208,20 @@ function setStatusHint(msg){
   }
 
   const schedulePush = debounce(async ()=>{
-    if(!auth.currentUser) return;
-    if(!facilityCode) return;
-    if(!remoteReady) return;
-    if(applyingRemote) return;
+  if(!auth.currentUser) return;
+  if(!facilityCode) return;
+  if(applyingRemote) return;
 
-    try{
-      setStatusHint("push…");
-      await pushAllPatients();
-      setStatusHint("OK");
-    }catch(e){
-      console.error("SYNC push error:", e);
-      setStatusHint("ERR");
-      lastPushedJson = "";
-    }
-  }, 600);
+  try{
+    setStatusHint("push…");
+    await pushAllPatients();
+    setStatusHint("OK");
+  }catch(e){
+    console.error("SYNC push error:", e);
+    setStatusHint("ERR");
+    lastPushedJson = "";
+  }
+}, 600);
 
   // Subscribe to local changes
   APP.onLocalChange(()=>{
