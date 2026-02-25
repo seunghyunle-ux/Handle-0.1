@@ -1,17 +1,15 @@
-/* search.v2.mjs
-   - SAFE additive module (does NOT touch scan.v2.mjs)
-   - Search popup: scanner default + camera backup (html5-qrcode)
-   - On patient QR: auto-navigate to that patient's MAR (by clicking patient list item)
+/* search.v2.mjs (iPhone-safe)
+   - No <dialog> (iOS Safari 이슈 회피)
+   - Scanner default + Camera backup (html5-qrcode)
+   - Patient QR -> auto navigate to patient MAR (click patient list item)
 */
 
 const searchBtn = document.getElementById("searchBtn");
 
-let dlg = null;
+let overlayEl = null;
 let html5 = null;
 
-/* ---------------------------
-   Helpers
---------------------------- */
+// ---------- helpers ----------
 function sanitizeText(t){
   return String(t || "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
 }
@@ -20,11 +18,9 @@ function tryParsePatientQR(raw){
   const t = sanitizeText(raw);
   if(!t) return { ok:false, reason:"EMPTY" };
 
-  let obj = null;
+  let obj;
   try { obj = JSON.parse(t); } catch { return { ok:false, reason:"NOT_JSON" }; }
 
-  // Expected:
-  // { v:1, type:"patient", facility:"...", patient:{ name, room, mrn } }
   if(!obj || obj.type !== "patient" || !obj.patient) return { ok:false, reason:"NOT_PATIENT" };
 
   const p = obj.patient || {};
@@ -33,8 +29,7 @@ function tryParsePatientQR(raw){
   const mrn  = sanitizeText(p.mrn);
 
   if(!name && !mrn) return { ok:false, reason:"NO_KEY" };
-
-  return { ok:true, name, room, mrn, raw: obj };
+  return { ok:true, name, room, mrn };
 }
 
 function findPatientButton({ name, room, mrn }){
@@ -48,12 +43,12 @@ function findPatientButton({ name, room, mrn }){
   const r = sanitizeText(room);
   const m = sanitizeText(mrn);
 
-  // 1) name startsWith 우선 (UI가 이름으로 시작하는 구조)
+  // name 기반 우선
   if(n){
     let hit = items.find(b => sanitizeText(b.textContent).startsWith(n));
     if(!hit) hit = items.find(b => sanitizeText(b.textContent).includes(n));
-    if(hit){
-      // room/mrn이 있으면 더 정확히 맞춰보기
+
+    if(hit && (r || m)){
       const txt = sanitizeText(hit.textContent);
       if(r && !txt.includes(r)){
         const hit2 = items.find(b => sanitizeText(b.textContent).includes(n) && sanitizeText(b.textContent).includes(r));
@@ -63,11 +58,11 @@ function findPatientButton({ name, room, mrn }){
         const hit3 = items.find(b => sanitizeText(b.textContent).includes(n) && sanitizeText(b.textContent).includes(m));
         if(hit3) hit = hit3;
       }
-      return hit;
     }
+    if(hit) return hit;
   }
 
-  // 2) MRN으로 찾기 (이름이 다를 때 대비)
+  // mrn 기반 보조
   if(m){
     const hit = items.find(b => sanitizeText(b.textContent).includes(m));
     if(hit) return hit;
@@ -79,26 +74,23 @@ function findPatientButton({ name, room, mrn }){
 function navigateToPatientFromQR(raw){
   const parsed = tryParsePatientQR(raw);
   if(!parsed.ok){
-    if(parsed.reason === "NOT_JSON") alert("환자 QR 파싱 실패 (JSON 아님).");
-    else if(parsed.reason === "NOT_PATIENT") alert("환자 QR이 아닙니다.");
-    else alert("환자 QR 인식 실패.");
+    if(parsed.reason === "NOT_JSON") setStatus("환자 QR 파싱 실패 (JSON 아님).");
+    else if(parsed.reason === "NOT_PATIENT") setStatus("환자 QR이 아닙니다.");
+    else setStatus("환자 QR 인식 실패.");
     return false;
   }
 
   const btn = findPatientButton(parsed);
   if(!btn){
-    alert(`환자 목록에서 찾지 못했습니다.\nname: ${parsed.name || "-"}\nmrn: ${parsed.mrn || "-"}`);
+    setStatus(`환자 목록에서 찾지 못했습니다: ${parsed.name || parsed.mrn || "-"}`);
     return false;
   }
 
-  // 기존 app.v2.mjs의 onclick 로직 그대로 타게 "클릭"한다
   btn.click();
   return true;
 }
 
-/* ---------------------------
-   html5-qrcode loader
---------------------------- */
+// ---------- html5-qrcode loader ----------
 async function loadHtml5Qrcode(){
   if(window.Html5Qrcode) return window.Html5Qrcode;
 
@@ -113,103 +105,93 @@ async function loadHtml5Qrcode(){
   return window.Html5Qrcode;
 }
 
-/* ---------------------------
-   Dialog UI
---------------------------- */
-function ensureDialog(){
-  if(dlg) return;
+// ---------- UI (overlay) ----------
+function setStatus(msg){
+  const el = overlayEl?.querySelector("#searchStatus");
+  if(el) el.textContent = msg;
+}
 
-  dlg = document.createElement("dialog");
-  dlg.id = "searchDlg";
-  dlg.innerHTML = `
-    <div class="dlg-head">🔍 환자 검색</div>
-    <div class="dlg-body">
-      <div class="hint" id="searchStatus">
-        스캐너로 환자 QR을 찍으세요. (기본) / 스캐너가 안되면 Camera 사용
+function openSearch(){
+  if(overlayEl) return;
+
+  overlayEl = document.createElement("div");
+  overlayEl.className = "overlay";
+  overlayEl.id = "searchOverlay";
+  overlayEl.innerHTML = `
+    <div class="card">
+      <div class="card-head">
+        <div>🔍 환자 검색</div>
+        <button class="btn secondary" id="searchCloseBtn">Close</button>
       </div>
+      <div class="card-body">
+        <div class="hint" id="searchStatus">스캐너로 환자 QR을 찍으세요. (기본) / 스캐너가 안되면 Camera 사용</div>
 
-      <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
-        <div style="flex:1; min-width:260px;">
-          <div style="font-weight:700; margin-bottom:6px;">Camera (backup)</div>
-          <div id="searchReader" style="width:320px; max-width:100%; background:#111; border-radius:12px; overflow:hidden;"></div>
-          <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-            <button class="btn secondary" id="searchCamStart">Start camera</button>
-            <button class="btn secondary" id="searchCamStop" disabled>Stop</button>
+        <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
+          <div style="flex:1; min-width:260px;">
+            <div style="font-weight:700; margin-bottom:6px;">Camera (backup)</div>
+            <div id="searchReader" style="width:320px; max-width:100%; background:#111; border-radius:12px; overflow:hidden;"></div>
+            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+              <button class="btn secondary" id="searchCamStart">Start camera</button>
+              <button class="btn secondary" id="searchCamStop" disabled>Stop</button>
+            </div>
+          </div>
+
+          <div style="flex:1; min-width:240px;">
+            <div style="font-weight:700; margin-bottom:6px;">Scanner (Bluetooth/USB)</div>
+            <div class="hint">아래 입력칸에 포커스 → 스캐너로 찍고 Enter</div>
+            <input id="searchInput" placeholder="Scan patient QR here…" autocomplete="off" autocapitalize="off" spellcheck="false" />
           </div>
         </div>
-
-        <div style="flex:1; min-width:240px;">
-          <div style="font-weight:700; margin-bottom:6px;">Scanner (Bluetooth/USB)</div>
-          <div class="hint">아래 입력칸에 포커스가 있으면 스캐너 입력이 들어옵니다. 스캔 후 Enter.</div>
-          <input id="searchInput" placeholder="Scan patient QR here…" autocomplete="off" autocapitalize="off" spellcheck="false" />
-          <div class="hint" style="margin-top:6px;">스캔 성공 시 자동으로 해당 환자 MAR로 이동합니다.</div>
-        </div>
       </div>
-    </div>
-
-    <div class="dlg-actions">
-      <button class="btn secondary" id="searchClose">Close</button>
     </div>
   `;
 
-  document.body.appendChild(dlg);
+  document.body.appendChild(overlayEl);
 
-  // close
-  dlg.querySelector("#searchClose").addEventListener("click", closeSearch);
+  // close handlers
+  overlayEl.querySelector("#searchCloseBtn").addEventListener("click", closeSearch);
+  overlayEl.addEventListener("click", (e) => {
+    // 바깥(overlay 배경) 클릭 시 닫기
+    if(e.target === overlayEl) closeSearch();
+  });
 
-  // scanner input default
-  const input = dlg.querySelector("#searchInput");
+  // scanner default focus
+  const input = overlayEl.querySelector("#searchInput");
+  setTimeout(() => input?.focus(), 50);
+
   input.addEventListener("keydown", async (e) => {
     if(e.key !== "Enter") return;
     e.preventDefault();
     const v = input.value;
     input.value = "";
-    const ok = navigateToPatientFromQR(v);
-    if(ok){
+
+    if(navigateToPatientFromQR(v)){
+      setStatus("환자 확인됨 → 이동 중…");
       await stopCamera();
       closeSearch();
     }
   });
 
   // camera buttons
-  dlg.querySelector("#searchCamStart").addEventListener("click", startCamera);
-  dlg.querySelector("#searchCamStop").addEventListener("click", stopCamera);
-
-  // when dialog closes, always stop camera
-  dlg.addEventListener("close", () => {
-    stopCamera();
-  });
+  overlayEl.querySelector("#searchCamStart").addEventListener("click", startCamera);
+  overlayEl.querySelector("#searchCamStop").addEventListener("click", stopCamera);
 }
 
-function openSearch(){
-  ensureDialog();
-  dlg.showModal();
-
-  // scanner default focus
-  const input = dlg.querySelector("#searchInput");
-  setTimeout(() => input && input.focus(), 50);
-
-  const statusEl = dlg.querySelector("#searchStatus");
-  statusEl.textContent = "스캐너로 환자 QR을 찍으세요. (기본) / 스캐너가 안되면 Camera 사용";
+async function closeSearch(){
+  await stopCamera();
+  overlayEl?.remove();
+  overlayEl = null;
 }
 
-function closeSearch(){
-  try { dlg?.close(); } catch {}
-}
-
-/* ---------------------------
-   Camera (html5-qrcode)
---------------------------- */
 async function startCamera(){
-  ensureDialog();
+  if(!overlayEl) return;
 
-  const statusEl = dlg.querySelector("#searchStatus");
-  const startBtn = dlg.querySelector("#searchCamStart");
-  const stopBtn  = dlg.querySelector("#searchCamStop");
+  const startBtn = overlayEl.querySelector("#searchCamStart");
+  const stopBtn  = overlayEl.querySelector("#searchCamStop");
 
-  await stopCamera(); // clean start
+  await stopCamera();
 
-  statusEl.textContent = "카메라 시작 중…";
+  setStatus("카메라 시작 중…");
   startBtn.disabled = true;
   stopBtn.disabled = false;
 
@@ -223,27 +205,33 @@ async function startCamera(){
       { facingMode: "environment" },
       config,
       async (decodedText) => {
-        const ok = navigateToPatientFromQR(decodedText);
-        if(ok){
-          statusEl.textContent = "환자 확인됨 → 이동 중…";
-          await stopCamera();
-          closeSearch();
+        if(navigateToPatientFromQR(decodedText)){
+          setStatus("환자 확인됨 → 이동 중…");
+          await closeSearch();
         }
       },
       (_err) => {}
     );
 
-    statusEl.textContent = "카메라 켜짐. 환자 QR을 비추세요…";
+    setStatus("카메라 켜짐. 환자 QR을 비추세요…");
   }catch(err){
-    const msg = err?.message || String(err);
-    statusEl.textContent = "카메라 실패: " + msg;
+    setStatus("카메라 실패: " + (err?.message || String(err)));
     await stopCamera();
   }
 }
 
 async function stopCamera(){
-  const startBtn = dlg?.querySelector("#searchCamStart");
-  const stopBtn  = dlg?.querySelector("#searchCamStop");
+  if(!overlayEl) {
+    // overlay가 닫혔는데 html5만 남아있을 수 있어서 정리
+    if(html5){
+      try{ await html5.stop(); await html5.clear(); }catch{}
+      html5 = null;
+    }
+    return;
+  }
+
+  const startBtn = overlayEl.querySelector("#searchCamStart");
+  const stopBtn  = overlayEl.querySelector("#searchCamStop");
 
   try{
     if(html5){
@@ -259,11 +247,26 @@ async function stopCamera(){
   }
 }
 
-/* ---------------------------
-   Wire button
---------------------------- */
-if(searchBtn){
-  searchBtn.addEventListener("click", openSearch);
-} else {
-  console.warn("search.v2.mjs: #searchBtn not found");
+// ---------- Wire (iPhone: click + touchend) ----------
+function wire(){
+  const btn = document.getElementById("searchBtn");
+  if(!btn){
+    setTimeout(wire, 200);
+    return;
+  }
+
+  // iOS에서 click이 씹히는 느낌 방지용
+  btn.style.cursor = "pointer";
+  btn.style.touchAction = "manipulation";
+
+  const handler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openSearch();
+  };
+
+  btn.addEventListener("click", handler, { passive:false });
+  btn.addEventListener("touchend", handler, { passive:false });
 }
+
+wire();
