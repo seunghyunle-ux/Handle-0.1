@@ -932,91 +932,92 @@ window.MAR_APP = {
   },
 };
 
-// ===== SCAN helpers =====
-getCurrentInitials: ()=>currentInitials,
+  // ===== SCAN helpers =====
+  getCurrentInitials: ()=>currentInitials,
 
-promptInitials: ()=>{
-  try{ openInitialsDialog(); }catch(_e){}
-},
+  promptInitials: ()=>{
+    try{ openInitialsDialog(); }catch(_e){}
+  },
 
-recordDoseGiven: (patientName, medName, schedTime, opts)=>{
-  opts = opts || {};
-  const silent = !!opts.silent;
+  recordDoseGiven: (patientName, medName, schedTime, opts)=>{
+    opts = opts || {};
+    const silent = !!opts.silent;
 
-  try{
-    patientName = (patientName==null) ? "" : String(patientName).trim();
-    medName = (medName==null) ? "" : String(medName).trim();
-    schedTime = (schedTime==null) ? "" : String(schedTime).trim();
+    try{
+      patientName = (patientName==null) ? "" : String(patientName).trim();
+      medName = (medName==null) ? "" : String(medName).trim();
+      schedTime = (schedTime==null) ? "" : String(schedTime).trim();
 
-    if(!patientName || !medName || !schedTime){
-      return { ok:false, reason:"BAD_ARGS" };
-    }
+      if(!patientName || !medName || !schedTime){
+        return { ok:false, reason:"BAD_ARGS" };
+      }
 
-    if(!currentInitials){
-      return { ok:false, reason:"NO_INITIALS" };
-    }
+      if(!currentInitials){
+        return { ok:false, reason:"NO_INITIALS" };
+      }
 
-    const p = ensurePatient(patientName);
+      const p = ensurePatient(patientName);
 
-    if(!p.meds || !p.meds[medName]){
-      return { ok:false, reason:"NO_MED" };
-    }
+      if(!p.meds || !p.meds[medName]){
+        return { ok:false, reason:"NO_MED" };
+      }
 
-    const md = p.meds[medName];
-    const times = Array.isArray(md.times) ? md.times : [];
+      const md = p.meds[medName];
+      const times = Array.isArray(md.times) ? md.times : [];
 
-    if(!times.includes(schedTime)){
-      return { ok:false, reason:"TIME_NOT_IN_MAR" };
-    }
+      if(!times.includes(schedTime)){
+        return { ok:false, reason:"TIME_NOT_IN_MAR" };
+      }
 
-    const dayKey = ymd(currentDay);
+      const dayKey = ymd(currentDay);
 
-    md.history = md.history || {};
-    md.history[dayKey] = md.history[dayKey] || [];
-    const arr = md.history[dayKey];
+      md.history = md.history || {};
+      md.history[dayKey] = md.history[dayKey] || [];
+      const arr = md.history[dayKey];
 
-    const now = new Date();
-    const sched = dtForDay(currentDay, schedTime);
-    const diff = minutesDiff(now, sched);
-    const status = diff <= 60 ? "ok" : "late";
-    const given = pad2(now.getHours()) + ":" + pad2(now.getMinutes());
+      const now = new Date();
+      const sched = dtForDay(currentDay, schedTime);
+      const diff = minutesDiff(now, sched);
+      const status = diff <= 60 ? "ok" : "late";
+      const given = pad2(now.getHours()) + ":" + pad2(now.getMinutes());
 
-    const idx = arr.findIndex(x=>x && x.sched===schedTime);
+      const idx = arr.findIndex(x=>x && x.sched===schedTime);
 
-    if(idx >= 0){
-      arr[idx] = {
-        ...(arr[idx]||{}),
-        sched:schedTime,
-        given,
-        status,
-        initials: currentInitials
+      if(idx >= 0){
+        arr[idx] = {
+          ...(arr[idx]||{}),
+          sched:schedTime,
+          given,
+          status,
+          initials: currentInitials
+        };
+      }else{
+        arr.push({
+          sched:schedTime,
+          given,
+          status,
+          initials: currentInitials
+        });
+      }
+
+      saveState();
+      renderAll();
+
+      if(status==="late" && !silent){
+        warnDetail.textContent =
+          `Scheduled ${schedTime} · Given ${given} ${currentInitials} · Diff ${Math.round(diff)} min`;
+        warnDlg.showModal();
+      }
+
+      return { ok:true, status, given, initials:currentInitials };
+
+    }catch(e){
+      console.error("recordDoseGiven error:", e);
+      return {
+        ok:false,
+        reason:"EXCEPTION",
+        error:String(e && e.message ? e.message : e)
       };
-    }else{
-      arr.push({
-        sched:schedTime,
-        given,
-        status,
-        initials: currentInitials
-      });
     }
-
-    saveState();
-    renderAll();
-
-    if(status==="late" && !silent){
-      warnDetail.textContent =
-        `Scheduled ${schedTime} · Given ${given} ${currentInitials} · Diff ${Math.round(diff)} min`;
-      warnDlg.showModal();
-    }
-
-    return { ok:true, status, given, initials:currentInitials };
-
-  }catch(e){
-    console.error("recordDoseGiven error:", e);
-    return {
-      ok:false,
-      reason:"EXCEPTION",
-      error:String(e && e.message ? e.message : e)
-    };
   }
 };
