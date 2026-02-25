@@ -1019,4 +1019,4 @@ recordDoseGiven: (patientName, medName, schedTime, opts)=>{
       error:String(e && e.message ? e.message : e)
     };
   }
-}
+};
