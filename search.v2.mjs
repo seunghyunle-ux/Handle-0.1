@@ -141,18 +141,40 @@ async function startCamera(){
   const startBtn = dlg.querySelector("#searchCamStart");
   const stopBtn  = dlg.querySelector("#searchCamStop");
 
+  // 혹시 이전 stream 남아있으면 정리
+  stopCamera();
+
+  // iOS/Safari 대비: playsinline + muted
+  video.setAttribute("playsinline", "");
+  video.muted = true;
+  video.autoplay = true;
+
+  statusEl.textContent = "카메라 요청 중… (권한 팝업 뜨면 허용)";
+
+  // ✅ BarcodeDetector 미지원이면 바로 안내 (특히 iPhone Safari에서 자주 해당)
   if(!("BarcodeDetector" in window)){
-    statusEl.textContent = "이 브라우저는 카메라 QR(BarcodeDetector) 미지원. 스캐너 입력을 사용하세요.";
+    statusEl.textContent =
+      "이 브라우저는 카메라 QR 자동인식(BarcodeDetector)을 지원하지 않습니다. 스캐너 입력칸을 사용하세요.";
     return;
   }
 
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:"environment" } });
+    // ✅ facingMode가 먹지 않는 기기도 있어서 ideal로 지정
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+
     video.srcObject = stream;
-    await video.play();
+
+    // play가 막히는 경우가 있어 catch로 상태 표시
+    await video.play().catch((e)=>{
+      statusEl.textContent = "비디오 재생 실패: " + (e?.message || e);
+    });
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
+    statusEl.textContent = "카메라 켜짐. 환자 QR을 비추세요…";
 
     const detector = new BarcodeDetector({ formats:["qr_code"] });
 
@@ -164,13 +186,31 @@ async function startCamera(){
           handlePatientQR(codes[0].rawValue);
           return;
         }
-      }catch{}
+      }catch(e){
+        // detect 에러는 계속 진행하되, 상태가 완전 silent 되지 않게 아주 가끔만 표시
+        // (원하면 여기 주석 해제)
+        // statusEl.textContent = "QR 감지 중…";
+      }
       rafId = requestAnimationFrame(loop);
     };
+
     rafId = requestAnimationFrame(loop);
 
-  }catch{
-    statusEl.textContent = "카메라 오류/권한 거부. 스캐너 입력을 사용하세요.";
+  }catch(err){
+    // ✅ 실패 이유를 눈에 띄게 표시
+    const name = err?.name || "CameraError";
+    const msg  = err?.message || String(err);
+
+    statusEl.textContent = `카메라 실패: ${name}\n${msg}\n\n(다른 창이 카메라를 사용 중이면 Stop 후 다시 시도)`;
+
+    // 대표 케이스 가이드
+    if(name === "NotAllowedError"){
+      alert("카메라 권한이 차단됨. 브라우저 주소창의 자물쇠(권한)에서 Camera를 Allow로 바꿔주세요.");
+    }
+    if(name === "NotReadableError"){
+      alert("카메라가 다른 창/앱에서 사용 중일 수 있어요. Scan 창 카메라를 Stop 하고 다시 시도하세요.");
+    }
+
     stopCamera();
   }
 }
