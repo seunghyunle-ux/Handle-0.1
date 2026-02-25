@@ -930,7 +930,6 @@ window.MAR_APP = {
     const el = document.getElementById("facilityInput");
     return (el && el.value) ? String(el.value).trim().toUpperCase() : null;
   },
-};
 
   // ===== SCAN helpers =====
   getCurrentInitials: ()=>currentInitials,
