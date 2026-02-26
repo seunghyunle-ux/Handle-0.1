@@ -21,7 +21,10 @@ function tryParsePatientQR(raw){
   let obj;
   try { obj = JSON.parse(t); } catch { return { ok:false, reason:"NOT_JSON" }; }
 
-  if(!obj || obj.type !== "patient" || !obj.patient) return { ok:false, reason:"NOT_PATIENT" };
+  if(!obj || !obj.patient) return { ok:false, reason:"NOT_PATIENT" };
+// Accept both strict patient payloads (type:"patient") and legacy patient payloads
+// that include { patient: {...} } without meds.
+if(!(obj.type === "patient" || (obj.patient && !obj.meds))) return { ok:false, reason:"NOT_PATIENT" };
 
   const p = obj.patient || {};
   const name = sanitizeText(p.name);
